@@ -470,6 +470,87 @@ function App() {
     }
   }
 
+  const settingsPage = (
+    <section className="page-view settings">
+      <div className="settings-heading"><h1>Einstellungen</h1>{settingsSaved && <span className="saved">Gespeichert</span>}</div>
+      <button className="setting-row" onClick={() => { const next = !darkMode; setDarkMode(next); void saveSetting('darkMode', String(next)) }}>
+        <span>Dark Mode</span><span className={`switch${darkMode ? ' on' : ''}`}><i /></span>
+      </button>
+      <button className="setting-row" onClick={testNotion}>
+        <span><b>Notion</b><small>{notionStatus}</small></span><span className="setting-action">Verbindung testen ›</span>
+      </button>
+      <button className="setting-row" onClick={() => { const next = language === 'Deutsch' ? 'English' : 'Deutsch'; setLanguage(next); localStorage.setItem('deskbuddy_language', next); void saveSetting('language', next) }}>
+        <span><b>Sprache</b><small>Anzeige der Oberfläche</small></span><span className="setting-action">{language} ›</span>
+      </button>
+      <label className="setting-row timer-mode-setting">
+        <span><b>Timer-Modus</b><small>Normaler Countdown oder Pomodoro</small></span>
+        <select value={timerMode} onChange={(event) => chooseTimerMode(event.target.value as TimerMode)}>
+          <option value="timer">Normaler Timer</option><option value="pomodoro">Pomodoro</option>
+        </select>
+      </label>
+      <div className="setting-row timer-setting">
+        <span><b>Arbeitsdauer</b><small>Timer oder Pomodoro-Arbeitsphase</small></span>
+        <div className="timer-stepper">
+          <button aria-label="Timerdauer verringern" onClick={() => changeWorkMinutes(workMinutes - 1)}>−</button>
+          <b>{workMinutes} Min.</b>
+          <button aria-label="Timerdauer erhöhen" onClick={() => changeWorkMinutes(workMinutes + 1)}>+</button>
+        </div>
+      </div>
+      {timerMode === 'pomodoro' && <div className="setting-row timer-setting">
+        <span><b>Pausendauer</b><small>Kurze Pomodoro-Pause</small></span>
+        <div className="timer-stepper">
+          <button aria-label="Pausendauer verringern" onClick={() => changeBreakMinutes(breakMinutes - 1)}>−</button>
+          <b>{breakMinutes} Min.</b>
+          <button aria-label="Pausendauer erhöhen" onClick={() => changeBreakMinutes(breakMinutes + 1)}>+</button>
+        </div>
+      </div>}
+      <div className="setting-row weather-setting">
+        <span><b>Wetter</b><small>OpenWeather Ort und API-Key</small></span>
+        <div className="weather-config">
+          <input aria-label="Wetterort" value={weatherCity} onChange={(event) => setWeatherCity(event.target.value)} />
+          <input aria-label="OpenWeather API-Key" type="password" placeholder="API-Key" value={weatherApiKey} onChange={(event) => setWeatherApiKey(event.target.value)} />
+          <button onClick={saveWeather}>Speichern</button>
+        </div>
+      </div>
+      <div className="setting-row icloud-setting">
+        <span><b>iCloud-Kalender</b><small>{calendarStatus}</small></span>
+        <div className="icloud-config">
+          <input aria-label="Apple-ID" placeholder="Apple-ID / E-Mail" value={icloudUsername} onChange={(event) => setIcloudUsername(event.target.value)} />
+          <input aria-label="App-spezifisches Passwort" type="password" placeholder="App-Passwort" value={icloudPassword} onChange={(event) => setIcloudPassword(event.target.value)} />
+          <div className="calendar-checklist" aria-label="Angezeigte iCloud-Kalender">
+            {icloudCalendars.map((item) => (
+              <label key={item.url}><input type="checkbox" checked={icloudCalendarUrls.includes(item.url)} onChange={(event) => setIcloudCalendarUrls((current) => event.target.checked ? [...current, item.url] : current.filter((url) => url !== item.url))} /><span>{item.name}</span></label>
+            ))}
+            {icloudCalendars.length === 0 && <span>Keine Kalender geladen</span>}
+          </div>
+          <button onClick={saveIcloudCalendar}>Speichern</button>
+        </div>
+      </div>
+      <div className="setting-row night-setting">
+        <span><b>Nachtmodus</b><small>Display automatisch ausschalten</small></span>
+        <button className={`switch${nightEnabled ? ' on' : ''}`} aria-label="Nachtmodus" onClick={() => { setNightEnabled((value) => { void saveSetting('nightEnabled', String(!value)); return !value }) }}><i /></button>
+        <div className="night-times">
+          <label><small>Aus</small><input type="time" value={nightStart} onChange={(event) => { setNightStart(event.target.value); void saveSetting('nightStart', event.target.value) }} /></label>
+          <label><small>An</small><input type="time" value={nightEnd} onChange={(event) => { setNightEnd(event.target.value); void saveSetting('nightEnd', event.target.value) }} /></label>
+        </div>
+      </div>
+      <label className="setting-row sync-row">
+        <span><b>Synchronisierung</b><small>Notion-Aktualisierung</small></span>
+        <select value={syncMinutes} onChange={(event) => { setSyncMinutes(event.target.value); localStorage.setItem('deskbuddy_sync', event.target.value); void saveSetting('syncMinutes', event.target.value) }}>
+          <option value="5">Alle 5 Min.</option><option value="15">Alle 15 Min.</option><option value="30">Alle 30 Min.</option>
+        </select>
+      </label>
+    </section>
+  )
+
+  if (standaloneConfig) {
+    return (
+      <main className={`app-shell standalone-config${darkMode ? ' dark' : ''}`}>
+        <section className="main-panel">{settingsPage}</section>
+      </main>
+    )
+  }
+
   return (
     <main
       className={`app-shell${darkMode ? ' dark' : ''}${standaloneConfig ? ' standalone-config' : ''}`}
