@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
-import { CalendarDays, Check, Cloud, CloudRain, CloudSun, Coffee, Home, ListTodo, Moon, Power, RefreshCw, Settings, Snowflake, Sun, TimerReset, X } from 'lucide-react'
+import { CalendarDays, Check, Cloud, CloudRain, CloudSun, Coffee, Home, ListTodo, Moon, Power, RefreshCw, Snowflake, Sun, TimerReset, X } from 'lucide-react'
 import './App.css'
 
-type Page = 'home' | 'tasks' | 'calendar' | 'timer' | 'settings'
+type Page = 'home' | 'tasks' | 'calendar' | 'timer' | 'config'
 type Mood = 'neutral' | 'happy' | 'focused' | 'proud' | 'sleepy' | 'thinking' | 'surprised'
 type MoodColor = 'default' | 'focus' | 'success' | 'warning'
 type AvatarReaction = { expression: Mood; moodColor: MoodColor; badge: string; message: string }
@@ -37,7 +37,8 @@ function BuddyFace({ mood, onClick }: { mood: Mood; onClick?: () => void }) {
 }
 
 function App() {
-  const [page, setPage] = useState<Page>('home')
+  const standaloneConfig = window.location.pathname === '/config'
+  const [page, setPage] = useState<Page>(standaloneConfig ? 'config' : 'home')
   const [now, setNow] = useState(new Date())
   const [workMinutes, setWorkMinutes] = useState(() => Number(localStorage.getItem('deskbuddy_work_minutes') || 25))
   const [breakMinutes, setBreakMinutes] = useState(() => Number(localStorage.getItem('deskbuddy_break_minutes') || 5))
@@ -115,7 +116,7 @@ function App() {
   }, [])
 
   useEffect(() => {
-    if (manualDisplaySleep) return
+    if (standaloneConfig || manualDisplaySleep) return
 
     if (!nightEnabled) {
       if (displayAsleep) {
@@ -152,7 +153,7 @@ function App() {
         body: JSON.stringify({ enabled: true }),
       }).catch(() => undefined)
     }
-  }, [now, nightEnabled, nightStart, nightEnd, displayAsleep, manualDisplaySleep])
+  }, [now, nightEnabled, nightStart, nightEnd, displayAsleep, manualDisplaySleep, standaloneConfig])
 
   const triggerAvatar = (event: string, context = '') => {
     setAvatarReaction((current) => ({ ...current, expression: 'thinking' }))
@@ -176,7 +177,7 @@ function App() {
   }
 
   useEffect(() => {
-    if (!avatarStarted.current) {
+    if (!standaloneConfig && !avatarStarted.current) {
       avatarStarted.current = true
       triggerAvatar('app_started', 'Desk Buddy wurde gestartet')
     }
@@ -471,7 +472,7 @@ function App() {
 
   return (
     <main
-      className={`app-shell${darkMode ? ' dark' : ''}`}
+      className={`app-shell${darkMode ? ' dark' : ''}${standaloneConfig ? ' standalone-config' : ''}`}
       onPointerDown={(event) => {
         if (displayAsleep) void wakeDisplay()
         swipeStart.current = { x: event.clientX, y: event.clientY }
@@ -580,7 +581,7 @@ function App() {
           <div className="timer-actions"><button onClick={() => { if (!running) triggerAvatar('timer_started', timerMode === 'pomodoro' ? 'Pomodoro gestartet' : 'Timer gestartet'); setRunning((value) => !value) }}>{running ? 'Pause' : secondsLeft === 0 ? 'Neu starten' : 'Start'}</button><button className="round-action" onClick={() => { setRunning(false); setTimerPhase('work'); setSecondsLeft(workMinutes * 60) }}><TimerReset size={22} /></button></div>
         </section>}
 
-        {page === 'settings' && <section className="page-view settings">
+        {page === 'config' && <section className="page-view settings">
           <div className="settings-heading"><h1>Einstellungen</h1>{settingsSaved && <span className="saved">Gespeichert</span>}</div>
           <button className="setting-row" onClick={() => { const next = !darkMode; setDarkMode(next); void saveSetting('darkMode', String(next)) }}>
             <span>Dark Mode</span><span className={`switch${darkMode ? ' on' : ''}`}><i /></span>
@@ -688,9 +689,6 @@ function App() {
             <button onClick={() => { loadTasks(); setQuickMenuOpen(false) }}>
               <RefreshCw size={20} /><span>Aktualisieren</span>
             </button>
-            <button onClick={() => { setPage('settings'); setQuickMenuOpen(false) }}>
-              <Settings size={20} /><span>Einstellungen</span>
-            </button>
             <button onClick={sleepDisplay}>
               <Power size={20} /><span>Display aus</span>
             </button>
@@ -698,13 +696,12 @@ function App() {
         </section>
       </>}
 
-      <nav className="nav-bar" aria-label="Hauptnavigation">
+      {!standaloneConfig && <nav className="nav-bar" aria-label="Hauptnavigation">
         <button className={page === 'home' ? 'active' : ''} onClick={() => setPage('home')}><Home size={21} /><span>Home</span></button>
         <button className={page === 'tasks' ? 'active' : ''} onClick={() => setPage('tasks')}><ListTodo size={21} /><span>Aufgaben</span></button>
         <button className={page === 'calendar' ? 'active' : ''} onClick={() => setPage('calendar')}><CalendarDays size={21} /><span>Kalender</span></button>
         <button className={page === 'timer' ? 'active' : ''} onClick={() => setPage('timer')}><Coffee size={21} /><span>Timer</span></button>
-        <button className={page === 'settings' ? 'active' : ''} onClick={() => setPage('settings')}><Settings size={21} /><span>Optionen</span></button>
-      </nav>
+      </nav>}
     </main>
   )
 }

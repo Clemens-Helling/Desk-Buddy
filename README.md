@@ -27,6 +27,14 @@ Ohne Key oder bei API-/Offline-Fehlern verwendet der Desk Buddy lokale Nachricht
 
 Unter **Optionen** kann der Nachtmodus eingeschaltet und eine freie Ausschalt- sowie Aufwachzeit festgelegt werden. Während der Schlafzeit wird die Raspberry-Pi-Hintergrundbeleuchtung auf null gesetzt. Ein Fingertipp aktiviert die zuvor gespeicherte Helligkeit wieder.
 
+## Fernkonfiguration
+
+Die Einstellungen werden nicht auf dem Raspberry-Pi-Bildschirm angezeigt. Von einem PC oder Smartphone kann die Konfigurationsseite im selben WLAN geöffnet werden:
+
+`http://<RASPBERRY-PI-IP>:8000/config`
+
+Die IP-Adresse des Pis ermittelt man mit `hostname -I`.
+
 ## iCloud-Kalender
 
 Erstelle in den Apple-ID-Einstellungen ein app-spezifisches Passwort. Dieses sowie die Apple-ID können unter **Optionen → iCloud-Kalender** eingetragen werden. Anschließend werden alle verfügbaren iCloud-Kalender geladen und mehrere Kalender können über Kontrollkästchen zur Anzeige ausgewählt werden.
