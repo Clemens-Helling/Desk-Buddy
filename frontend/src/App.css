@@ -247,6 +247,25 @@
 .calendar-event span, .calendar-event em { width: 100%; color: var(--muted); font-size: 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .calendar-event em { font-style: normal; opacity: .8; }
 .calendar-empty { display: block; padding-top: 18px; text-align: center; color: var(--muted); font-size: 11px; }
+.pico-setting { height: 82px; min-height: 82px; }
+.pico-config { display: grid; grid-template-columns: 170px 110px 82px; gap: 6px; }
+.pico-config input, .pico-config select { height: 38px; min-width: 0; border: 1px solid #d6d8ca; border-radius: 10px; background: #faf9f2; color: var(--ink); padding: 0 8px; }
+.pico-config button { height: 38px; border: 0; border-radius: 19px; background: #dce7dc; color: #52675a; }
+.pico-macro-setting { min-height: 190px; height: 190px; align-items: flex-start; padding-top: 10px; }
+.pico-macro-editor { width: 430px; max-height: 168px; overflow-y: auto; }
+.pico-macro-row { display: grid; grid-template-columns: 112px 82px 150px 34px; gap: 5px; margin-bottom: 5px; }
+.pico-macro-row input, .pico-macro-row select { height: 34px; min-width: 0; border: 1px solid #d6d8ca; border-radius: 8px; background: #faf9f2; color: var(--ink); padding: 0 6px; font-size: 10px; }
+.pico-macro-row button { width: 34px; height: 34px; border: 0; border-radius: 50%; background: #eee2d5; color: #805f50; }
+.pico-macro-actions { display: flex; justify-content: flex-end; gap: 6px; }
+.pico-macro-actions button { height: 34px; border: 0; border-radius: 17px; background: #dce7dc; color: #52675a; padding: 0 10px; font-size: 10px; }
+.macros-page { height: 100%; padding: 18px 24px 14px; overflow: hidden; }
+.macros-heading { height: 58px; display: flex; justify-content: space-between; }
+.macros-heading h1 { font-size: 32px; }
+.macros-heading .eyebrow { margin: 2px 0 0; }
+.macro-grid { height: calc(100% - 58px); display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-auto-rows: 104px; gap: 10px; align-content: start; }
+.macro-button { border: 0; border-radius: 18px; background: #e7eadf; color: var(--ink); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; }
+.macro-button b { max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.macro-button small { color: var(--muted); }
 .icloud-setting { height: 170px; min-height: 170px; }
 .icloud-config { display: grid; grid-template-columns: 130px 130px 150px 82px; gap: 6px; align-items: start; }
 .calendar-checklist { width: 150px; max-height: 76px; overflow-y: auto; display: flex; flex-direction: column; gap: 3px; }
@@ -258,6 +277,9 @@
 .app-shell.dark .calendar-day.today { background: #46594d; }
 .app-shell.dark .calendar-event { background: #303936; }
 .app-shell.dark .night-times input { background: #303936; border-color: #46504c; color: #edf1ea; }
+.app-shell.dark .pico-config input, .app-shell.dark .pico-config select, .app-shell.dark .pico-macro-row input, .app-shell.dark .pico-macro-row select { background: #303936; border-color: #46504c; color: #edf1ea; }
+.app-shell.dark .pico-config button, .app-shell.dark .pico-macro-actions button { background: #46594d; color: #edf1ea; }
+.app-shell.dark .macro-button { background: #35403a; }
 @media (max-height: 480px) {
   .topbar { height: 52px; padding: 0 16px 0 20px; }
   .brand { font-size: 15px; }
@@ -268,7 +290,7 @@
   .weather span { font-size: 16px; }
   .home-grid { height: calc(100% - 52px); }
   .nav-bar { gap: 4px; justify-content: flex-start; padding: 10px 6px 6px; }
-  .nav-bar button { height: calc((480px - 20px) / 5 - 4px); max-height: 74px; }
+  .nav-bar button { height: calc((480px - 20px) / 6 - 4px); max-height: 68px; }
   .calendar-page { padding: 8px 12px 8px; }
   .calendar-page-heading { height: 46px; align-items: flex-start; }
   .calendar-page-heading > div { height: 46px; display: flex; flex-direction: column; justify-content: flex-start; }
@@ -278,6 +300,15 @@
   .morning-button { height: 34px; margin-top: 5px; font-size: 10px; }
   .morning-summary { left: 12px; top: 58px; width: 300px; max-height: 210px; padding: 10px 38px 10px 12px; }
   .morning-summary p { font-size: 11px; }
+  .macros-page { padding: 8px 12px; }
+  .macros-heading { height: 46px; align-items: center; }
+  .macros-heading h1 { font-size: 26px; }
+  .macros-heading .eyebrow { font-size: 9px; }
+  .macro-grid { height: calc(100% - 46px); grid-template-columns: repeat(3, minmax(0, 1fr)); grid-auto-rows: 84px; gap: 7px; }
+  .macro-button { border-radius: 12px; }
+  .pico-setting { height: 72px; min-height: 72px; }
+  .pico-macro-setting { height: 150px; min-height: 150px; }
+  .pico-macro-editor { width: 390px; max-height: 130px; }
   .calendar-week { height: calc(100% - 46px); gap: 5px; }
   .calendar-day { border-radius: 12px; padding: 5px 4px; }
   .calendar-day header { height: 34px; }

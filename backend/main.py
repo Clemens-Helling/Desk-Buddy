@@ -46,9 +46,24 @@ def init_db() -> None:
         connection.execute("CREATE TABLE IF NOT EXISTS notion_cache (kind TEXT PRIMARY KEY, payload TEXT NOT NULL, synced_at TEXT)")
         connection.execute("CREATE TABLE IF NOT EXISTS pending_changes (id INTEGER PRIMARY KEY AUTOINCREMENT, page_id TEXT NOT NULL, action TEXT NOT NULL, payload TEXT NOT NULL, created_at TEXT NOT NULL)")
         connection.execute("CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+        connection.execute("CREATE TABLE IF NOT EXISTS pico_macros (id TEXT PRIMARY KEY, name TEXT NOT NULL, kind TEXT NOT NULL, payload TEXT NOT NULL, sort_order INTEGER NOT NULL DEFAULT 0)")
 
 
 init_db()
+
+
+def _ensure_default_macros() -> None:
+    defaults = [
+        ("copy", "Kopieren", "shortcut", json.dumps({"keys": ["CTRL", "C"]}), 0),
+        ("paste", "Einfügen", "shortcut", json.dumps({"keys": ["CTRL", "V"]}), 1),
+        ("save", "Speichern", "shortcut", json.dumps({"keys": ["CTRL", "S"]}), 2),
+    ]
+    with db() as connection:
+        for macro in defaults:
+            connection.execute("INSERT OR IGNORE INTO pico_macros(id,name,kind,payload,sort_order) VALUES(?,?,?,?,?)", macro)
+
+
+_ensure_default_macros()
 
 
 def notion_headers() -> dict[str, str]:
@@ -584,6 +599,115 @@ def get_display() -> dict[str, bool]:
     with db() as connection:
         row = connection.execute("SELECT value FROM settings WHERE key='displayEnabled'").fetchone()
     return {"enabled": row["value"] != "false" if row else True}
+
+
+class PicoMacro(BaseModel):
+    id: str
+    name: str
+    kind: str = "shortcut"
+    payload: dict[str, Any] = {}
+
+
+class PicoMacroConfig(BaseModel):
+    macros: list[PicoMacro]
+
+
+class PicoConfig(BaseModel):
+    port: str = "/dev/serial0"
+    baud: int = 115200
+
+
+@app.get("/api/pico/status")
+def pico_status() -> dict[str, Any]:
+    with db() as connection:
+        port_row = connection.execute("SELECT value FROM settings WHERE key='picoPort'").fetchone()
+        baud_row = connection.execute("SELECT value FROM settings WHERE key='picoBaud'").fetchone()
+    port = port_row["value"] if port_row else os.getenv("PICO_UART_PORT", "/dev/serial0")
+    baud = int(baud_row["value"] if baud_row else os.getenv("PICO_UART_BAUD", "115200") or "115200")
+    exists = Path(port).exists()
+    return {"connected": exists, "port": port, "baud": baud, "message": "Pico-Gerät gefunden" if exists else "Pico nicht gefunden"}
+
+
+@app.get("/api/pico/config")
+def get_pico_config() -> dict[str, Any]:
+    with db() as connection:
+        port_row = connection.execute("SELECT value FROM settings WHERE key='picoPort'").fetchone()
+        baud_row = connection.execute("SELECT value FROM settings WHERE key='picoBaud'").fetchone()
+    return {
+        "port": port_row["value"] if port_row else os.getenv("PICO_UART_PORT", "/dev/serial0"),
+        "baud": int(baud_row["value"] if baud_row else os.getenv("PICO_UART_BAUD", "115200") or "115200"),
+    }
+
+
+@app.put("/api/pico/config")
+def set_pico_config(body: PicoConfig) -> dict[str, Any]:
+    port = body.port.strip() or "/dev/serial0"
+    baud = max(1200, min(921600, body.baud))
+    with db() as connection:
+        connection.execute("INSERT INTO settings(key,value) VALUES('picoPort',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (port,))
+        connection.execute("INSERT INTO settings(key,value) VALUES('picoBaud',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (str(baud),))
+    return {"port": port, "baud": baud}
+
+
+@app.get("/api/pico/macros")
+def get_pico_macros() -> dict[str, Any]:
+    with db() as connection:
+        rows = connection.execute("SELECT id,name,kind,payload,sort_order FROM pico_macros ORDER BY sort_order,id").fetchall()
+    items = []
+    for row in rows:
+        try:
+            payload = json.loads(row["payload"])
+        except (TypeError, json.JSONDecodeError):
+            payload = {}
+        items.append({"id": row["id"], "name": row["name"], "kind": row["kind"], "payload": payload})
+    return {"items": items}
+
+
+@app.put("/api/pico/macros")
+def save_pico_macros(body: PicoMacroConfig) -> dict[str, Any]:
+    ids_seen: set[str] = set()
+    with db() as connection:
+        existing_ids = {row["id"] for row in connection.execute("SELECT id FROM pico_macros").fetchall()}
+        for index, macro in enumerate(body.macros):
+            macro_id = macro.id.strip() or f"macro-{index + 1}"
+            name = macro.name.strip()[:40] or "Unbenanntes Makro"
+            kind = macro.kind if macro.kind in {"shortcut", "text"} else "shortcut"
+            ids_seen.add(macro_id)
+            connection.execute("INSERT INTO pico_macros(id,name,kind,payload,sort_order) VALUES(?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,kind=excluded.kind,payload=excluded.payload,sort_order=excluded.sort_order", (macro_id, name, kind, json.dumps(macro.payload), index))
+        for old_id in existing_ids - ids_seen:
+            connection.execute("DELETE FROM pico_macros WHERE id=?", (old_id,))
+    return {"status": "saved", "count": len(ids_seen)}
+
+
+@app.post("/api/pico/macros/{macro_id}/send")
+def send_pico_macro(macro_id: str) -> dict[str, Any]:
+    with db() as connection:
+        row = connection.execute("SELECT id,name,kind,payload FROM pico_macros WHERE id=?", (macro_id,)).fetchone()
+        port_row = connection.execute("SELECT value FROM settings WHERE key='picoPort'").fetchone()
+        baud_row = connection.execute("SELECT value FROM settings WHERE key='picoBaud'").fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Makro nicht gefunden")
+
+    port = port_row["value"] if port_row else os.getenv("PICO_UART_PORT", "/dev/serial0")
+    baud = int(baud_row["value"] if baud_row else os.getenv("PICO_UART_BAUD", "115200") or "115200")
+    try:
+        payload = json.loads(row["payload"])
+        if row["kind"] == "text":
+            command = {"type": "text", "text": str(payload.get("text", ""))[:500]}
+        else:
+            keys = [str(key).strip().upper() for key in payload.get("keys", []) if str(key).strip()][:8]
+            command = {"type": "shortcut", "keys": keys}
+
+        import serial
+        with serial.Serial(port, baud, timeout=1) as connection:
+            connection.write((json.dumps(command, ensure_ascii=False) + "\n").encode("utf-8"))
+            connection.flush()
+            response = connection.readline().decode("utf-8", errors="replace").strip()
+        if response and not response.startswith("ok"):
+            raise RuntimeError(response)
+        return {"status": "sent", "macro": row["name"]}
+    except (ImportError, OSError, ValueError, RuntimeError) as exc:
+        raise HTTPException(status_code=503, detail=f"Pico nicht erreichbar: {exc}")
 
 
 @app.get("/api/weather")

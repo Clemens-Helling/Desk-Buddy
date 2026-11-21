@@ -1,0 +1,2 @@
+# MicroPython firmware for Pico WH uses stdlib modules only.
+# No circup / CircuitPython libraries are required.

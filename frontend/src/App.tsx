@@ -1,14 +1,15 @@
 import { useEffect, useRef, useState } from 'react'
-import { CalendarDays, Check, Cloud, CloudRain, CloudSun, Coffee, Home, ListTodo, Moon, Power, RefreshCw, Snowflake, Sun, TimerReset, X } from 'lucide-react'
+import { CalendarDays, Check, Cloud, CloudRain, CloudSun, Coffee, Home, Keyboard, ListTodo, Moon, Power, RefreshCw, Snowflake, Sun, TimerReset, X } from 'lucide-react'
 import './App.css'
 
-type Page = 'home' | 'tasks' | 'calendar' | 'timer' | 'config'
+type Page = 'home' | 'tasks' | 'calendar' | 'timer' | 'macros' | 'config'
 type Mood = 'neutral' | 'happy' | 'focused' | 'proud' | 'sleepy' | 'thinking' | 'surprised'
 type MoodColor = 'default' | 'focus' | 'success' | 'warning'
 type AvatarReaction = { expression: Mood; moodColor: MoodColor; badge: string; message: string }
 type DeskTask = { id: string; title: string; done: boolean; status?: string; due?: string }
 type CalendarItem = { title: string; start: string; end?: string; location?: string; all_day?: boolean; calendarName?: string }
 type IcloudCalendar = { name: string; url: string }
+type PicoMacro = { id: string; name: string; kind: 'shortcut' | 'text'; payload: { keys?: string[]; text?: string } }
 type TimerMode = 'timer' | 'pomodoro'
 type TimerPhase = 'work' | 'break'
 
@@ -77,6 +78,10 @@ function App() {
   const [morningSummaryLoading, setMorningSummaryLoading] = useState(false)
   const [morningStart, setMorningStart] = useState('05:00')
   const [morningEnd, setMorningEnd] = useState('12:00')
+  const [picoMacros, setPicoMacros] = useState<PicoMacro[]>([])
+  const [picoStatus, setPicoStatus] = useState('Nicht geprüft')
+  const [picoPort, setPicoPort] = useState('/dev/serial0')
+  const [picoBaud, setPicoBaud] = useState(115200)
   const swipeStart = useRef<{ x: number; y: number } | null>(null)
 
   const loadTasks = () => {
@@ -101,6 +106,44 @@ function App() {
       })
       .catch(() => setCalendarStatus('Nicht erreichbar'))
       .finally(() => setCalendarRefreshing(false))
+  }
+
+  const loadPico = () => {
+    fetch('/api/pico/status').then((response) => response.ok ? response.json() : null).then((result: { connected?: boolean; message?: string } | null) => {
+      setPicoStatus(result?.connected ? 'Pico verbunden' : result?.message || 'Pico nicht gefunden')
+    }).catch(() => setPicoStatus('Pico nicht erreichbar'))
+    fetch('/api/pico/macros').then((response) => response.ok ? response.json() : null).then((result: { items?: PicoMacro[] } | null) => setPicoMacros(result?.items || [])).catch(() => setPicoMacros([]))
+  }
+
+  const loadPicoConfig = () => {
+    fetch('/api/pico/config').then((response) => response.ok ? response.json() : null).then((result: { port?: string; baud?: number } | null) => {
+      if (result?.port) setPicoPort(result.port)
+      if (result?.baud) setPicoBaud(result.baud)
+    }).catch(() => undefined)
+  }
+
+  const sendPicoMacro = async (macroId: string) => {
+    setPicoStatus('Makro wird gesendet…')
+    await fetch(`/api/pico/macros/${encodeURIComponent(macroId)}/send`, { method: 'POST' })
+      .then((response) => response.ok ? response.json() : null)
+      .then((result: { macro?: string } | null) => setPicoStatus(result?.macro ? `${result.macro} gesendet` : 'Makro gesendet'))
+      .catch(() => setPicoStatus('Pico nicht erreichbar'))
+  }
+
+  const savePicoMacros = async (macros: PicoMacro[]) => {
+    await fetch('/api/pico/macros', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ macros }) }).then((response) => response.ok ? response.json() : null).then(() => {
+      setPicoMacros(macros)
+      setSettingsSaved(true)
+      window.setTimeout(() => setSettingsSaved(false), 1600)
+    }).catch(() => setSettingsSaved(false))
+  }
+
+  const savePicoConfig = async () => {
+    await fetch('/api/pico/config', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ port: picoPort, baud: picoBaud }) }).then((response) => response.ok ? response.json() : null).then(() => {
+      setSettingsSaved(true)
+      loadPico()
+      window.setTimeout(() => setSettingsSaved(false), 1600)
+    }).catch(() => setSettingsSaved(false))
   }
 
   const loadIcloudCalendars = () => {
@@ -189,6 +232,8 @@ function App() {
     loadWeather()
     loadCalendar()
     loadIcloudCalendars()
+    loadPico()
+    loadPicoConfig()
     const weatherRefresh = window.setInterval(loadWeather, 30 * 60 * 1000)
     const calendarRefresh = window.setInterval(() => loadCalendar(false), 15 * 60 * 1000)
 
@@ -555,6 +600,30 @@ function App() {
           <label><small>An</small><input type="time" value={nightEnd} onChange={(event) => { setNightEnd(event.target.value); void saveSetting('nightEnd', event.target.value) }} /></label>
         </div>
       </div>
+      <div className="setting-row pico-setting">
+        <span><b>Pico WH / UART</b><small>{picoStatus}</small></span>
+        <div className="pico-config">
+          <input aria-label="UART-Gerät" value={picoPort} onChange={(event) => setPicoPort(event.target.value)} />
+          <select aria-label="UART-Baudrate" value={picoBaud} onChange={(event) => setPicoBaud(Number(event.target.value))}><option value="9600">9600</option><option value="115200">115200</option><option value="230400">230400</option><option value="460800">460800</option></select>
+          <button onClick={savePicoConfig}>Speichern</button>
+        </div>
+      </div>
+      <div className="setting-row pico-macro-setting">
+        <span><b>Pico-Macros</b><small>Shortcuts oder Text senden</small></span>
+        <div className="pico-macro-editor">
+          {picoMacros.map((macro, index) => (
+            <div className="pico-macro-row" key={macro.id}>
+              <input aria-label="Macro-Name" value={macro.name} onChange={(event) => setPicoMacros((items) => items.map((item, itemIndex) => itemIndex === index ? { ...item, name: event.target.value } : item))} />
+              <select aria-label="Macro-Typ" value={macro.kind} onChange={(event) => setPicoMacros((items) => items.map((item, itemIndex) => itemIndex === index ? { ...item, kind: event.target.value as 'shortcut' | 'text', payload: event.target.value === 'text' ? { text: '' } : { keys: [] } } : item))}><option value="shortcut">Tasten</option><option value="text">Text</option></select>
+              {macro.kind === 'text'
+                ? <input aria-label="Macro-Text" value={macro.payload.text || ''} onChange={(event) => setPicoMacros((items) => items.map((item, itemIndex) => itemIndex === index ? { ...item, payload: { text: event.target.value } } : item))} />
+                : <input aria-label="Tastenkombination" placeholder="CTRL+C" value={(macro.payload.keys || []).join('+')} onChange={(event) => setPicoMacros((items) => items.map((item, itemIndex) => itemIndex === index ? { ...item, payload: { keys: event.target.value.split('+').map((key) => key.trim()).filter(Boolean) } } : item))} />}
+              <button aria-label="Macro entfernen" onClick={() => setPicoMacros((items) => items.filter((_, itemIndex) => itemIndex !== index))}>×</button>
+            </div>
+          ))}
+          <div className="pico-macro-actions"><button onClick={() => setPicoMacros((items) => [...items, { id: `macro-${Date.now()}`, name: 'Neues Macro', kind: 'shortcut', payload: { keys: ['CTRL', 'C'] } }])}>Macro hinzufügen</button><button onClick={() => void savePicoMacros(picoMacros)}>Macros speichern</button></div>
+        </div>
+      </div>
       <div className="setting-row morning-setting">
         <span><b>Morgen-Übersicht</b><small>Zeitraum für den Tagesübersicht-Button</small></span>
         <div className="night-times">
@@ -693,6 +762,20 @@ function App() {
           </div>
         </section>}
 
+        {page === 'macros' && <section className="page-view macros-page">
+          <div className="macros-heading"><div><h1>Macros</h1><p className="eyebrow">Pico WH · {picoStatus}</p></div><button className="refresh-button" onClick={loadPico}>Prüfen</button></div>
+          <div className="macro-grid">
+            {picoMacros.map((macro) => (
+              <button className="macro-button" key={macro.id} onClick={() => void sendPicoMacro(macro.id)}>
+                <Keyboard size={22} />
+                <b>{macro.name}</b>
+                <small>{macro.kind === 'text' ? 'Text senden' : macro.payload.keys?.join(' + ')}</small>
+              </button>
+            ))}
+            {picoMacros.length === 0 && <div className="empty-state">Noch keine Macros konfiguriert.</div>}
+          </div>
+        </section>}
+
         {page === 'timer' && <section className="timer-view">
           <div>
             <div className="timer-mode-switch"><button className={timerMode === 'timer' ? 'active' : ''} onClick={() => chooseTimerMode('timer')}>Normaler Timer</button><button className={timerMode === 'pomodoro' ? 'active' : ''} onClick={() => chooseTimerMode('pomodoro')}>Pomodoro</button></div>
@@ -823,6 +906,7 @@ function App() {
         <button className={page === 'home' ? 'active' : ''} onClick={() => setPage('home')}><Home size={21} /><span>Home</span></button>
         <button className={page === 'tasks' ? 'active' : ''} onClick={() => setPage('tasks')}><ListTodo size={21} /><span>Aufgaben</span></button>
         <button className={page === 'calendar' ? 'active' : ''} onClick={() => setPage('calendar')}><CalendarDays size={21} /><span>Kalender</span></button>
+        <button className={page === 'macros' ? 'active' : ''} onClick={() => setPage('macros')}><Keyboard size={21} /><span>Macros</span></button>
         <button className={page === 'timer' ? 'active' : ''} onClick={() => setPage('timer')}><Coffee size={21} /><span>Timer</span></button>
       </nav>}
     </main>

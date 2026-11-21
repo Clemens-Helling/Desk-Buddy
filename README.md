@@ -46,6 +46,25 @@ Die Einstellungen werden nicht auf dem Raspberry-Pi-Bildschirm angezeigt. Von ei
 
 Die IP-Adresse des Pis ermittelt man mit `hostname -I`.
 
+## Raspberry Pi Pico WH / BLE-HID
+
+Der Pico WH verbindet sich per **MicroPython** als Bluetooth-Tastatur mit dem PC. Der Raspberry Pi sendet Makros über UART:
+
+- Pico `GP0 / TX` → Raspberry-Pi `GPIO15 / RX`, Pin 10
+- Pico `GP1 / RX` → Raspberry-Pi `GPIO14 / TX`, Pin 8
+- Gemeinsame Masse an Pin 6, 9, 14, 20, 25, 30, 34, 39
+- UART: 115200 Baud
+
+Firmware liegt unter `firmware/pico/code.py` und benötigt auf dem Pico WH keine externen Python-Pakete. Die Makros werden auf der Config-Seite unter `http://<PI-IP>:8000/config` bearbeitet. Die Makro-Seite auf dem Pi sendet die ausgewählten Aktionen über UART an den Pico.
+
+Setup kurz:
+1. Aktuelle MicroPython-`uf2` für Pico W/WH flashen.
+2. `firmware/pico/code.py` als `main.py` auf den Pico kopieren.
+3. Am PC Bluetooth-Gerät `DeskBuddy-Macro` koppeln.
+4. Danach sendet der Pi Shortcuts/Text per UART (115200).
+
+Vor dem Einsatz: Raspberry-Pi UART-Konsole deaktivieren und Serial-Zugriff erlauben. Keine Spannungen von 5 V auf die Pico-GPIOs legen.
+
 ## iCloud-Kalender
 
 Erstelle in den Apple-ID-Einstellungen ein app-spezifisches Passwort. Dieses sowie die Apple-ID können unter **Optionen → iCloud-Kalender** eingetragen werden. Anschließend werden alle verfügbaren iCloud-Kalender geladen und mehrere Kalender können über Kontrollkästchen zur Anzeige ausgewählt werden.
