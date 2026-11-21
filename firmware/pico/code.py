@@ -26,6 +26,7 @@ PC den Pico nach einem Neustart ohne erneutes Koppeln wiedererkennt.
 
 import bluetooth
 import machine
+import sys
 import utime
 
 try:
@@ -59,6 +60,20 @@ MAX_LINE_BYTES = const(2048)
 MAX_TEXT_CHARS = const(500)
 KEY_PRESS_MS = const(10)
 KEY_GAP_MS = const(6)
+
+DEBUG = True  # Ausgaben in der Konsole (Thonny); im Dauerbetrieb auf False setzen
+
+
+def log(*args):
+    if DEBUG:
+        print("[DeskBuddy]", *args)
+
+
+def log_exception(exc):
+    if DEBUG:
+        print("[DeskBuddy] FEHLER:")
+        sys.print_exception(exc)
+
 
 UART = machine.UART(
     0,
@@ -422,8 +437,10 @@ class DeskBuddyBLEKeyboard:
         for option in ({"bond": True}, {"mitm": False}, {"io": _IO_CAPABILITY_NO_INPUT_OUTPUT}):
             try:
                 self._ble.config(**option)
-            except (TypeError, ValueError, OSError):
+            except (TypeError, ValueError, OSError) as exc:
+                log("BLE-Security nicht verfügbar:", option, exc, "-> MicroPython zu alt?")
                 ok = False
+        log("BLE-Security aktiv:", ok)
         return ok
 
     # -- Bonding-Schlüssel ---------------------------------------------------
@@ -470,12 +487,15 @@ class DeskBuddyBLEKeyboard:
         if event == _IRQ_CENTRAL_CONNECT:
             self._conn_handle = data[0]
             self._encrypted = False
+            log("PC verbunden")
         elif event == _IRQ_CENTRAL_DISCONNECT:
             self._conn_handle = None
             self._encrypted = False
+            log("PC getrennt")
             self._advertise()
         elif event == _IRQ_ENCRYPTION_UPDATE:
-            conn_handle, encrypted, _authenticated, _bonded, _key_size = data
+            conn_handle, encrypted, authenticated, bonded, key_size = data
+            log("Verschlüsselung:", encrypted, "bonded:", bonded)
             if conn_handle == self._conn_handle:
                 self._encrypted = bool(encrypted)
         elif event == _IRQ_PASSKEY_ACTION:
@@ -540,7 +560,25 @@ class DeskBuddyBLEKeyboard:
         return self._notify(self._h_consumer, b"\x00\x00")
 
 
-ble_keyboard = DeskBuddyBLEKeyboard()
+class _NoBle:
+    """Ersatz, falls Bluetooth nicht startet: UART und LEDs laufen trotzdem."""
+
+    connected = False
+
+    def save_secrets_if_needed(self):
+        pass
+
+    def unpair(self):
+        pass
+
+
+log("Start, MicroPython:", sys.implementation, getattr(sys, "version", ""))
+try:
+    ble_keyboard = DeskBuddyBLEKeyboard()
+    log("BLE gestartet, Gerät:", DEVICE_NAME)
+except Exception as _exc:  # noqa: BLE001
+    log_exception(_exc)
+    ble_keyboard = _NoBle()
 
 
 def send_shortcut(keys):
@@ -668,10 +706,12 @@ def send_led(command):
 
 
 def reply(message):
+    log("Antwort:", message)
     UART.write((message + "\n").encode("utf-8"))
 
 
 def handle_command(line):
+    log("UART empfangen:", line)
     try:
         command = json.loads(line.decode("utf-8"))
     except (ValueError, UnicodeError):
@@ -711,7 +751,23 @@ def handle_command(line):
         reply("error unknown-command")
 
 
+def led_selftest():
+    """Kurzes Aufleuchten beim Start: zeigt, dass Verdrahtung und Firmware laufen."""
+    if led_strip is None:
+        log("LED: neopixel-Modul fehlt")
+        return
+    try:
+        _render_leds([(0, 24, 0)] * LED_COUNT)
+        utime.sleep_ms(400)
+        _render_leds([])
+        log("LED-Selbsttest ok (GP{}, {} LEDs)".format(LED_PIN, LED_COUNT))
+    except Exception as exc:  # noqa: BLE001
+        log_exception(exc)
+
+
 def main():
+    led_selftest()
+    log("Warte auf UART-Befehle (GP0 TX / GP1 RX, {} Baud)".format(UART_BAUD))
     buffer = bytearray()
     while True:
         ble_keyboard.save_secrets_if_needed()
@@ -733,7 +789,8 @@ def main():
                 continue
             try:
                 handle_command(line)
-            except Exception:  # Firmware darf durch einen Befehl nie abstürzen
+            except Exception as exc:  # Firmware darf durch einen Befehl nie abstürzen
+                log_exception(exc)
                 reply("error internal")
 
         if len(buffer) > MAX_LINE_BYTES:
