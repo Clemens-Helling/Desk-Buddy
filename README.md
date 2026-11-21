@@ -2,6 +2,17 @@
 
 Chromium-Kiosk-Frontend für ein Raspberry-Pi-7-Zoll-Display (primär 800 × 480) mit React/Vite und FastAPI-Backend.
 
+## Raspberry-Pi-Update
+
+Für spätere Updates reicht auf dem Raspberry Pi:
+
+```bash
+cd ~/Desk-Buddy
+./scripts/update.sh
+```
+
+Das Script beendet laufende Prozesse, sichert lokale Änderungen an Startskripten, zieht den aktuellen Stand, installiert Abhängigkeiten, baut das Frontend und startet Deskbuddy neu.
+
 ## Lokal starten
 
 1. Frontend bauen: `cd frontend && npm install && npm run build`

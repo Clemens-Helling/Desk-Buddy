@@ -141,6 +141,90 @@ async def avatar_event(body: dict[str, Any]) -> dict[str, Any]:
         return {"source": "fallback", **fallback}
 
 
+@app.post("/api/morning/summary")
+async def morning_summary() -> dict[str, Any]:
+    import json
+    from datetime import datetime, timezone
+
+    today = datetime.now().astimezone().date().isoformat()
+
+    with db() as connection:
+        task_row = connection.execute("SELECT payload, synced_at FROM notion_cache WHERE kind='tasks'").fetchone()
+        calendar_row = connection.execute("SELECT payload, synced_at FROM notion_cache WHERE kind='calendar'").fetchone()
+        weather_row = connection.execute("SELECT payload, synced_at FROM notion_cache WHERE kind='weather'").fetchone()
+
+    tasks = json.loads(task_row["payload"])
+    if isinstance(tasks, list):
+        today_tasks = [
+            str(task.get("title", "Aufgabe"))
+            for task in tasks
+            if not task.get("done") and (not task.get("due") or str(task.get("due", "")[:10]) == today)
+        ]
+    else:
+        today_tasks = []
+
+    calendar_items = json.loads(calendar_row["payload"]) if calendar_row else []
+    today_events = []
+    for item in calendar_items if isinstance(calendar_items, list) else []:
+        start = str(item.get("start", ""))
+        if start[:10] == today:
+            time = "Ganztägig" if item.get("all_day") else start[11:16]
+            title = str(item.get("title", "Termin"))
+            location = str(item.get("location", "")).strip()
+            today_events.append(f"{time}: {title}" + (f" ({location})" if location else ""))
+
+    weather = json.loads(weather_row["payload"]) if weather_row else {}
+
+    fallback = "Guten Morgen! "
+    if weather:
+        fallback += f"Heute {weather.get('temperature')} °C, {weather.get('condition', 'Wetter nicht verfügbar')}. "
+    if today_events:
+        fallback += f"Als Erstes steht {today_events[0]} an. "
+    elif today_tasks:
+        fallback += f"Als erste Aufgabe ist {today_tasks[0]} vorgesehen. "
+    else:
+        fallback += "Heute stehen keine Termine oder Aufgaben an."
+
+    api_key = os.getenv("GEMINI_API_KEY", "").strip()
+    if not api_key:
+        return {"source": "fallback", "summary": fallback[:500]}
+
+    prompt = (
+        "Erstelle eine kurze freundliche Morgen-Zusammenfassung auf Deutsch für einen Desk Buddy. "
+        "Berücksichtige das heutige Wetter, Termine und offene Aufgaben. "
+        "Antworte nur als JSON mit exakt dem Feld summary. "
+        "Maximal 500 Zeichen. Keine Markdown-Aufzählungen, keine Grußformel außerhalb des JSON. "
+        f"Datum: {today}. Wetter: {weather}. Termine heute: {today_events}. "
+        f"Offene Aufgaben heute: {today_tasks}."
+    )
+
+    try:
+        model = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite").strip()
+        async with httpx.AsyncClient(timeout=10) as client:
+            response = await client.post(
+                f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
+                headers={"x-goog-api-key": api_key, "Content-Type": "application/json"},
+                json={
+                    "contents": [{"parts": [{"text": prompt}]}],
+                    "generationConfig": {
+                        "temperature": 0.6,
+                        "maxOutputTokens": 300,
+                        "responseMimeType": "application/json",
+                    },
+                },
+            )
+            response.raise_for_status()
+        candidates = response.json().get("candidates", [])
+        text = candidates[0].get("content", {}).get("parts", [{}])[0].get("text", "") if candidates else ""
+        data = json.loads(text)
+        summary = str(data.get("summary", "")).strip()[:500]
+        if not summary:
+            raise ValueError("Leere Morgen-Zusammenfassung")
+        return {"source": "gemini", "summary": summary}
+    except (httpx.HTTPError, json.JSONDecodeError, KeyError, IndexError, TypeError, ValueError):
+        return {"source": "fallback", "summary": fallback[:500]}
+
+
 @app.get("/api/tasks")
 async def get_tasks() -> dict[str, Any]:
     database_id = os.getenv("NOTION_TASKS_DATABASE_ID", "")

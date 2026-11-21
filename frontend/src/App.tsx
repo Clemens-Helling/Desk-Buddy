@@ -73,6 +73,10 @@ function App() {
   const [nightEnd, setNightEnd] = useState('07:00')
   const [displayAsleep, setDisplayAsleep] = useState(false)
   const [manualDisplaySleep, setManualDisplaySleep] = useState(false)
+  const [morningSummary, setMorningSummary] = useState('')
+  const [morningSummaryLoading, setMorningSummaryLoading] = useState(false)
+  const [morningStart, setMorningStart] = useState('05:00')
+  const [morningEnd, setMorningEnd] = useState('12:00')
   const swipeStart = useRef<{ x: number; y: number } | null>(null)
 
   const loadTasks = () => {
@@ -197,6 +201,8 @@ function App() {
         if (settings.nightEnabled !== undefined) setNightEnabled(settings.nightEnabled === 'true')
         if (settings.nightStart) setNightStart(settings.nightStart)
         if (settings.nightEnd) setNightEnd(settings.nightEnd)
+        if (settings.morningStart) setMorningStart(settings.morningStart)
+        if (settings.morningEnd) setMorningEnd(settings.morningEnd)
         if (settings.icloudUsername) {
           setIcloudUsername(settings.icloudUsername)
           window.setTimeout(loadIcloudCalendars, 0)
@@ -409,6 +415,21 @@ function App() {
     }).catch(() => undefined)
   }
 
+  const requestMorningSummary = async () => {
+    setMorningSummaryLoading(true)
+    setMorningSummary('Zusammenfassung wird erstellt…')
+    try {
+      const response = await fetch('/api/morning/summary', { method: 'POST', cache: 'no-store' })
+      if (!response.ok) throw new Error('Zusammenfassung nicht verfügbar')
+      const result = await response.json()
+      setMorningSummary(result.summary || 'Heute stehen noch keine Informationen bereit.')
+    } catch {
+      setMorningSummary('Die Tagesübersicht ist gerade nicht verfügbar. Bitte versuche es erneut.')
+    } finally {
+      setMorningSummaryLoading(false)
+    }
+  }
+
   const saveBrightness = async () => {
     await fetch('/api/system/brightness', {
       method: 'PUT',
@@ -534,6 +555,13 @@ function App() {
           <label><small>An</small><input type="time" value={nightEnd} onChange={(event) => { setNightEnd(event.target.value); void saveSetting('nightEnd', event.target.value) }} /></label>
         </div>
       </div>
+      <div className="setting-row morning-setting">
+        <span><b>Morgen-Übersicht</b><small>Zeitraum für den Tagesübersicht-Button</small></span>
+        <div className="night-times">
+          <label><small>Von</small><input type="time" value={morningStart} onChange={(event) => { setMorningStart(event.target.value); void saveSetting('morningStart', event.target.value) }} /></label>
+          <label><small>Bis</small><input type="time" value={morningEnd} onChange={(event) => { setMorningEnd(event.target.value); void saveSetting('morningEnd', event.target.value) }} /></label>
+        </div>
+      </div>
       <label className="setting-row sync-row">
         <span><b>Synchronisierung</b><small>Notion-Aktualisierung</small></span>
         <select value={syncMinutes} onChange={(event) => { setSyncMinutes(event.target.value); localStorage.setItem('deskbuddy_sync', event.target.value); void saveSetting('syncMinutes', event.target.value) }}>
@@ -585,6 +613,20 @@ function App() {
             <section className="face-zone">
               <BuddyFace mood={mood} onClick={() => triggerAvatar('user_clicked_avatar', 'Der Benutzer hat den Avatar berührt')} />
               <button className={`mood-chip color-${avatarReaction.moodColor}`} onClick={() => triggerAvatar('user_clicked_avatar', 'Der Benutzer hat die Avatar-Nachricht berührt')}><b>{avatarReaction.badge}</b> <span>·</span> {avatarReaction.message}</button>
+              {(() => {
+                const toMinutes = (value: string) => {
+                  const [hours, minutes] = value.split(':').map(Number)
+                  return hours * 60 + minutes
+                }
+                const current = now.getHours() * 60 + now.getMinutes()
+                const insideMorningTime = current >= toMinutes(morningStart) && current < toMinutes(morningEnd)
+                return insideMorningTime ? <button className="morning-button" disabled={morningSummaryLoading} onClick={requestMorningSummary}>Guten Morgen · Tagesübersicht</button> : null
+              })()}
+              {morningSummary && <section className="morning-summary" aria-live="polite">
+                <button className="morning-summary-close" aria-label="Zusammenfassung schließen" onClick={() => setMorningSummary('')}>×</button>
+                <small>Dein Morgen</small>
+                <p>{morningSummary}</p>
+              </section>}
             </section>
             <section className="info-zone">
               <div className="clock"><strong>{time}</strong><span>{date}</span></div>
