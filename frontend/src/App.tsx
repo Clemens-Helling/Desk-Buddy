@@ -128,9 +128,15 @@ function App() {
   const sendPicoMacro = async (macroId: string) => {
     setPicoStatus('Makro wird gesendet…')
     await fetch(`/api/pico/macros/${encodeURIComponent(macroId)}/send`, { method: 'POST' })
-      .then((response) => response.ok ? response.json() : null)
+      .then(async (response) => {
+        if (!response.ok) {
+          const result = await response.json().catch(() => null) as { detail?: string } | null
+          throw new Error(result?.detail || 'Pico nicht erreichbar')
+        }
+        return response.json()
+      })
       .then((result: { macro?: string } | null) => setPicoStatus(result?.macro ? `${result.macro} gesendet` : 'Makro gesendet'))
-      .catch(() => setPicoStatus('Pico nicht erreichbar'))
+      .catch((error: unknown) => setPicoStatus(error instanceof Error ? error.message : 'Pico nicht erreichbar'))
   }
 
   const sendDirectLed = async (mode: 'fill' | 'off') => {
@@ -145,9 +151,15 @@ function App() {
         brightness: ledBrightness / 100,
       }),
     })
-      .then((response) => response.ok ? response.json() : null)
+      .then(async (response) => {
+        if (!response.ok) {
+          const result = await response.json().catch(() => null) as { detail?: string } | null
+          throw new Error(result?.detail || 'Pico nicht erreichbar')
+        }
+        return response.json()
+      })
       .then(() => setPicoStatus(mode === 'off' ? 'LED aus' : `LED ${ledColor}`))
-      .catch(() => setPicoStatus('Pico nicht erreichbar'))
+      .catch((error: unknown) => setPicoStatus(error instanceof Error ? error.message : 'Pico nicht erreichbar'))
   }
 
   const savePicoMacros = async (macros: PicoMacro[]) => {
