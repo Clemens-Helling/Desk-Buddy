@@ -468,6 +468,40 @@ def set_brightness(body: dict[str, int]) -> dict[str, int | bool]:
     return {"brightness": value, "applied": applied}
 
 
+@app.put("/api/system/display")
+def set_display(body: dict[str, bool]) -> dict[str, bool | int]:
+    enabled = body.get("enabled", True)
+    backlight = next(iter(sorted(Path("/sys/class/backlight").glob("*"))), None)
+    applied = False
+
+    with db() as connection:
+        saved_row = connection.execute("SELECT value FROM settings WHERE key='brightness'").fetchone()
+    saved_brightness = int(saved_row["value"]) if saved_row else 70
+
+    if backlight:
+        try:
+            maximum = int((backlight / "max_brightness").read_text().strip())
+            if enabled:
+                target = max(1, round(saved_brightness * maximum / 100))
+                (backlight / "brightness").write_text(str(target))
+            else:
+                (backlight / "brightness").write_text("0")
+            applied = True
+        except (OSError, ValueError, ZeroDivisionError):
+            pass
+
+    with db() as connection:
+        connection.execute("INSERT INTO settings(key,value) VALUES('displayEnabled',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", ("true" if enabled else "false",))
+    return {"enabled": enabled, "applied": applied, "brightness": saved_brightness}
+
+
+@app.get("/api/system/display")
+def get_display() -> dict[str, bool]:
+    with db() as connection:
+        row = connection.execute("SELECT value FROM settings WHERE key='displayEnabled'").fetchone()
+    return {"enabled": row["value"] != "false" if row else True}
+
+
 @app.get("/api/weather")
 async def get_weather() -> dict[str, Any]:
     import json

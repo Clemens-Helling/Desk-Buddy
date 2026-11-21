@@ -23,6 +23,10 @@ GEMINI_MODEL=gemini-3.1-flash-lite
 
 Ohne Key oder bei API-/Offline-Fehlern verwendet der Desk Buddy lokale Nachrichten. Der Avatar wird nur durch eigene Events aktualisiert, nicht per Polling.
 
+## Nachtmodus
+
+Unter **Optionen** kann der Nachtmodus eingeschaltet und eine freie Ausschalt- sowie Aufwachzeit festgelegt werden. Während der Schlafzeit wird die Raspberry-Pi-Hintergrundbeleuchtung auf null gesetzt. Ein Fingertipp aktiviert die zuvor gespeicherte Helligkeit wieder.
+
 ## iCloud-Kalender
 
 Erstelle in den Apple-ID-Einstellungen ein app-spezifisches Passwort. Dieses sowie die Apple-ID können unter **Optionen → iCloud-Kalender** eingetragen werden. Anschließend werden alle verfügbaren iCloud-Kalender geladen und mehrere Kalender können über Kontrollkästchen zur Anzeige ausgewählt werden.

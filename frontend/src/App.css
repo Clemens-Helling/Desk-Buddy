@@ -6,7 +6,7 @@
   position: relative;
   width: 100vw; height: 100vh; min-height: 480px; overflow: hidden;
   display: grid; grid-template-columns: 1fr 74px; grid-template-rows: minmax(0, 100%);
-  background: #edece2; color: var(--ink); font-family: Inter, "Segoe UI", sans-serif;
+  background: #edece2; color: var(--ink); font-family: Inter, "Segoe UI", sans-serif; cursor: none;
 }
 .main-panel { position: relative; grid-row: 1; grid-column: 1; min-width: 0; min-height: 0; height: 100%; background: var(--cream); }
 .topbar { height: 64px; display: flex; align-items: center; justify-content: space-between; padding: 0 30px 0 34px; }
@@ -114,6 +114,13 @@
 .switch.on { background: #718d77; }
 .switch.on i { transform: translateX(24px); }
 .sync-row select { width: 118px; height: 42px; border: 1px solid #d6d8ca; border-radius: 12px; background: #faf9f2; color: var(--ink); padding: 0 8px; }
+.display-wake { position: absolute; inset: 0 74px 0 0; z-index: 100; border: 0; background: #000; color: white; cursor: pointer; }
+.display-wake span { opacity: 0; }
+.night-setting { min-height: 70px; }
+.night-setting > .switch { border: 0; cursor: pointer; }
+.night-times { display: flex; align-items: center; gap: 8px; }
+.night-times label { display: flex; flex-direction: column; color: var(--muted); }
+.night-times input { width: 86px; height: 38px; border: 1px solid #d6d8ca; border-radius: 10px; background: #faf9f2; color: var(--ink); padding: 0 6px; }
 .quick-menu-peek { position: absolute; z-index: 20; top: 3px; left: calc((100% - 74px) / 2); width: 84px; height: 22px; transform: translateX(-50%); border: 0; background: transparent; display: grid; place-items: start center; }
 .quick-menu-peek span { width: 34px; height: 4px; margin-top: 3px; border-radius: 4px; background: rgba(38, 52, 58, .28); }
 .quick-backdrop { position: absolute; inset: 0 74px 0 0; z-index: 30; border: 0; background: rgba(38, 52, 58, .22); }
@@ -127,7 +134,7 @@
 .brightness-control div { gap: 8px; font-size: 13px; }
 .brightness-control b { margin-left: auto; font-size: 12px; }
 .brightness-control input { width: 100%; height: 28px; margin: 4px 0 0; accent-color: #718d77; }
-.quick-actions { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+ .quick-actions { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
 .quick-actions button { min-height: 62px; border: 0; border-radius: 16px; background: #edf0e7; color: var(--ink); display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 12px; }
 .app-shell.dark { --ink: #edf1ea; --muted: #b1bbb5; --cream: #252d2b; --line: #46504c; background: #1c2221; }
 .app-shell.dark .main-panel { background: #252d2b; }
@@ -234,6 +241,7 @@
 .app-shell.dark .calendar-day { background: #343b35; }
 .app-shell.dark .calendar-day.today { background: #46594d; }
 .app-shell.dark .calendar-event { background: #303936; }
+.app-shell.dark .night-times input { background: #303936; border-color: #46504c; color: #edf1ea; }
 @media (max-height: 480px) {
   .topbar { height: 52px; padding: 0 16px 0 20px; }
   .brand { font-size: 15px; }

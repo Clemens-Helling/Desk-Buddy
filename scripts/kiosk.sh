@@ -9,6 +9,10 @@ if [ -z "$BROWSER" ]; then
   exit 1
 fi
 
+if command -v unclutter >/dev/null; then
+  unclutter -idle 0.1 -root >/dev/null 2>&1 &
+fi
+
 for attempt in $(seq 1 30); do
   if curl --fail --silent --max-time 2 "$URL/api/health" >/dev/null; then
     break

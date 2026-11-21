@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { CalendarDays, Check, Cloud, CloudRain, CloudSun, Coffee, Home, ListTodo, Moon, RefreshCw, Settings, Snowflake, Sun, TimerReset, X } from 'lucide-react'
+import { CalendarDays, Check, Cloud, CloudRain, CloudSun, Coffee, Home, ListTodo, Moon, Power, RefreshCw, Settings, Snowflake, Sun, TimerReset, X } from 'lucide-react'
 import './App.css'
 
 type Page = 'home' | 'tasks' | 'calendar' | 'timer' | 'settings'
@@ -67,6 +67,11 @@ function App() {
   const [icloudUsername, setIcloudUsername] = useState('')
   const [icloudPassword, setIcloudPassword] = useState('')
   const [icloudCalendarUrls, setIcloudCalendarUrls] = useState<string[]>([])
+  const [nightEnabled, setNightEnabled] = useState(false)
+  const [nightStart, setNightStart] = useState('22:00')
+  const [nightEnd, setNightEnd] = useState('07:00')
+  const [displayAsleep, setDisplayAsleep] = useState(false)
+  const [manualDisplaySleep, setManualDisplaySleep] = useState(false)
   const swipeStart = useRef<{ x: number; y: number } | null>(null)
 
   const loadTasks = () => {
@@ -109,6 +114,46 @@ function App() {
     return () => window.clearInterval(clock)
   }, [])
 
+  useEffect(() => {
+    if (manualDisplaySleep) return
+
+    if (!nightEnabled) {
+      if (displayAsleep) {
+        setDisplayAsleep(false)
+        void fetch('/api/system/display', {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ enabled: true }),
+        }).catch(() => undefined)
+      }
+      return
+    }
+
+    const toMinutes = (value: string) => {
+      const [hours, minutes] = value.split(':').map(Number)
+      return hours * 60 + minutes
+    }
+    const current = now.getHours() * 60 + now.getMinutes()
+    const start = toMinutes(nightStart)
+    const end = toMinutes(nightEnd)
+    const shouldSleep = start <= end
+      ? current >= start && current < end
+      : current >= start || current < end
+
+    if (shouldSleep && !displayAsleep) {
+      setDisplayAsleep(true)
+      void fetch('/api/system/display', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: false }),
+      }).catch(() => undefined)
+    } else if (!shouldSleep && displayAsleep) {
+      setDisplayAsleep(false)
+      void fetch('/api/system/display', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: true }),
+      }).catch(() => undefined)
+    }
+  }, [now, nightEnabled, nightStart, nightEnd, displayAsleep, manualDisplaySleep])
+
   const triggerAvatar = (event: string, context = '') => {
     setAvatarReaction((current) => ({ ...current, expression: 'thinking' }))
     void fetch('/api/avatar/event', {
@@ -148,6 +193,9 @@ function App() {
         if (settings.darkMode !== undefined) setDarkMode(settings.darkMode === 'true')
         if (settings.language) setLanguage(settings.language)
         if (settings.syncMinutes) setSyncMinutes(settings.syncMinutes)
+        if (settings.nightEnabled !== undefined) setNightEnabled(settings.nightEnabled === 'true')
+        if (settings.nightStart) setNightStart(settings.nightStart)
+        if (settings.nightEnd) setNightEnd(settings.nightEnd)
         if (settings.icloudUsername) {
           setIcloudUsername(settings.icloudUsername)
           window.setTimeout(loadIcloudCalendars, 0)
@@ -338,6 +386,28 @@ function App() {
     void saveSetting('timerMode', mode)
   }
 
+  const sleepDisplay = async () => {
+    setManualDisplaySleep(true)
+    setDisplayAsleep(true)
+    setQuickMenuOpen(false)
+    await fetch('/api/system/display', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled: false }),
+    }).catch(() => undefined)
+  }
+
+  const wakeDisplay = async () => {
+    if (!displayAsleep) return
+    setManualDisplaySleep(false)
+    setDisplayAsleep(false)
+    await fetch('/api/system/display', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled: true }),
+    }).catch(() => undefined)
+  }
+
   const saveBrightness = async () => {
     await fetch('/api/system/brightness', {
       method: 'PUT',
@@ -402,7 +472,10 @@ function App() {
   return (
     <main
       className={`app-shell${darkMode ? ' dark' : ''}`}
-      onPointerDown={(event) => { swipeStart.current = { x: event.clientX, y: event.clientY } }}
+      onPointerDown={(event) => {
+        if (displayAsleep) void wakeDisplay()
+        swipeStart.current = { x: event.clientX, y: event.clientY }
+      }}
       onPointerUp={(event) => {
         if (!swipeStart.current) return
         const dy = event.clientY - swipeStart.current.y
@@ -412,6 +485,7 @@ function App() {
         swipeStart.current = null
       }}
     >
+      {displayAsleep && <button className="display-wake" aria-label="Display einschalten" onClick={wakeDisplay}><span>Display einschalten</span></button>}
       <button className="quick-menu-peek" aria-label="Schnellmenü öffnen" onClick={() => setQuickMenuOpen(true)}><span /></button>
       <section className="main-panel">
         {page === 'home' && <>
@@ -568,6 +642,14 @@ function App() {
               <button onClick={saveIcloudCalendar}>Speichern</button>
             </div>
           </div>
+          <div className="setting-row night-setting">
+            <span><b>Nachtmodus</b><small>Display automatisch ausschalten</small></span>
+            <button className={`switch${nightEnabled ? ' on' : ''}`} aria-label="Nachtmodus" onClick={() => { setNightEnabled((value) => { void saveSetting('nightEnabled', String(!value)); return !value }) }}><i /></button>
+            <div className="night-times">
+              <label><small>Aus</small><input type="time" value={nightStart} onChange={(event) => { setNightStart(event.target.value); void saveSetting('nightStart', event.target.value) }} /></label>
+              <label><small>An</small><input type="time" value={nightEnd} onChange={(event) => { setNightEnd(event.target.value); void saveSetting('nightEnd', event.target.value) }} /></label>
+            </div>
+          </div>
           <label className="setting-row sync-row">
             <span><b>Synchronisierung</b><small>Notion-Aktualisierung</small></span>
             <select value={syncMinutes} onChange={(event) => { setSyncMinutes(event.target.value); localStorage.setItem('deskbuddy_sync', event.target.value); void saveSetting('syncMinutes', event.target.value) }}>
@@ -608,6 +690,9 @@ function App() {
             </button>
             <button onClick={() => { setPage('settings'); setQuickMenuOpen(false) }}>
               <Settings size={20} /><span>Einstellungen</span>
+            </button>
+            <button onClick={sleepDisplay}>
+              <Power size={20} /><span>Display aus</span>
             </button>
           </div>
         </section>
