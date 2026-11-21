@@ -262,7 +262,14 @@
 .macros-heading { height: 58px; display: flex; justify-content: space-between; }
 .macros-heading h1 { font-size: 32px; }
 .macros-heading .eyebrow { margin: 2px 0 0; }
-.macro-grid { height: calc(100% - 58px); display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-auto-rows: 104px; gap: 10px; align-content: start; }
+.pico-led-direct { height: 64px; display: grid; grid-template-columns: 58px 1fr 1fr 88px 88px; gap: 8px; align-items: center; margin-bottom: 8px; }
+.pico-led-direct input[type="color"] { width: 58px; height: 44px; border: 0; padding: 0; background: transparent; }
+.pico-led-direct label { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 6px; font-size: 10px; color: var(--muted); }
+.pico-led-direct input[type="range"] { width: 100%; }
+.pico-led-direct b { min-width: 28px; text-align: right; color: var(--ink); font-size: 11px; }
+.pico-led-direct button { height: 36px; border: 0; border-radius: 18px; background: #dce7dc; color: #52675a; display: flex; align-items: center; justify-content: center; gap: 4px; }
+.pico-led-direct button.danger { background: #eddad6; color: #7b3f38; }
+.macro-grid { height: calc(100% - 130px); display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-auto-rows: 104px; gap: 10px; align-content: start; }
 .macro-button { border: 0; border-radius: 18px; background: #e7eadf; color: var(--ink); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; }
 .macro-button b { max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .macro-button small { color: var(--muted); }
@@ -280,6 +287,8 @@
 .app-shell.dark .pico-config input, .app-shell.dark .pico-config select, .app-shell.dark .pico-macro-row input, .app-shell.dark .pico-macro-row select { background: #303936; border-color: #46504c; color: #edf1ea; }
 .app-shell.dark .pico-config button, .app-shell.dark .pico-macro-actions button { background: #46594d; color: #edf1ea; }
 .app-shell.dark .macro-button { background: #35403a; }
+.app-shell.dark .pico-led-direct button { background: #46594d; color: #edf1ea; }
+.app-shell.dark .pico-led-direct button.danger { background: #6b4742; color: #f4e7e5; }
 @media (max-height: 480px) {
   .topbar { height: 52px; padding: 0 16px 0 20px; }
   .brand { font-size: 15px; }
@@ -304,7 +313,12 @@
   .macros-heading { height: 46px; align-items: center; }
   .macros-heading h1 { font-size: 26px; }
   .macros-heading .eyebrow { font-size: 9px; }
-  .macro-grid { height: calc(100% - 46px); grid-template-columns: repeat(3, minmax(0, 1fr)); grid-auto-rows: 84px; gap: 7px; }
+  .pico-led-direct { height: 54px; grid-template-columns: 48px 1fr 1fr 74px 74px; gap: 6px; margin-bottom: 6px; }
+  .pico-led-direct input[type="color"] { width: 48px; height: 36px; }
+  .pico-led-direct label { font-size: 9px; gap: 4px; }
+  .pico-led-direct b { font-size: 10px; min-width: 22px; }
+  .pico-led-direct button { height: 32px; border-radius: 16px; font-size: 10px; }
+  .macro-grid { height: calc(100% - 106px); grid-template-columns: repeat(3, minmax(0, 1fr)); grid-auto-rows: 84px; gap: 7px; }
   .macro-button { border-radius: 12px; }
   .pico-setting { height: 72px; min-height: 72px; }
   .pico-macro-setting { height: 150px; min-height: 150px; }

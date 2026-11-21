@@ -617,6 +617,34 @@ class PicoConfig(BaseModel):
     baud: int = 115200
 
 
+class PicoLedControl(BaseModel):
+    mode: str = "fill"
+    color: str = "#3ecf8e"
+    count: int = 8
+    brightness: float = 0.25
+
+
+def _get_pico_port_baud() -> tuple[str, int]:
+    with db() as connection:
+        port_row = connection.execute("SELECT value FROM settings WHERE key='picoPort'").fetchone()
+        baud_row = connection.execute("SELECT value FROM settings WHERE key='picoBaud'").fetchone()
+    port = port_row["value"] if port_row else os.getenv("PICO_UART_PORT", "/dev/serial0")
+    baud = int(baud_row["value"] if baud_row else os.getenv("PICO_UART_BAUD", "115200") or "115200")
+    return port, baud
+
+
+def _send_pico_command(command: dict[str, Any]) -> None:
+    port, baud = _get_pico_port_baud()
+    import serial
+
+    with serial.Serial(port, baud, timeout=1) as connection:
+        connection.write((json.dumps(command, ensure_ascii=False) + "\n").encode("utf-8"))
+        connection.flush()
+        response = connection.readline().decode("utf-8", errors="replace").strip()
+    if response and not response.startswith("ok"):
+        raise RuntimeError(response)
+
+
 def _parse_led_color(value: Any) -> list[int]:
     if isinstance(value, str):
         text = value.strip()
@@ -674,24 +702,15 @@ def _build_led_command(payload: dict[str, Any]) -> dict[str, Any]:
 
 @app.get("/api/pico/status")
 def pico_status() -> dict[str, Any]:
-    with db() as connection:
-        port_row = connection.execute("SELECT value FROM settings WHERE key='picoPort'").fetchone()
-        baud_row = connection.execute("SELECT value FROM settings WHERE key='picoBaud'").fetchone()
-    port = port_row["value"] if port_row else os.getenv("PICO_UART_PORT", "/dev/serial0")
-    baud = int(baud_row["value"] if baud_row else os.getenv("PICO_UART_BAUD", "115200") or "115200")
+    port, baud = _get_pico_port_baud()
     exists = Path(port).exists()
     return {"connected": exists, "port": port, "baud": baud, "message": "Pico-Gerät gefunden" if exists else "Pico nicht gefunden"}
 
 
 @app.get("/api/pico/config")
 def get_pico_config() -> dict[str, Any]:
-    with db() as connection:
-        port_row = connection.execute("SELECT value FROM settings WHERE key='picoPort'").fetchone()
-        baud_row = connection.execute("SELECT value FROM settings WHERE key='picoBaud'").fetchone()
-    return {
-        "port": port_row["value"] if port_row else os.getenv("PICO_UART_PORT", "/dev/serial0"),
-        "baud": int(baud_row["value"] if baud_row else os.getenv("PICO_UART_BAUD", "115200") or "115200"),
-    }
+    port, baud = _get_pico_port_baud()
+    return {"port": port, "baud": baud}
 
 
 @app.put("/api/pico/config")
@@ -738,13 +757,9 @@ def save_pico_macros(body: PicoMacroConfig) -> dict[str, Any]:
 def send_pico_macro(macro_id: str) -> dict[str, Any]:
     with db() as connection:
         row = connection.execute("SELECT id,name,kind,payload FROM pico_macros WHERE id=?", (macro_id,)).fetchone()
-        port_row = connection.execute("SELECT value FROM settings WHERE key='picoPort'").fetchone()
-        baud_row = connection.execute("SELECT value FROM settings WHERE key='picoBaud'").fetchone()
     if not row:
         raise HTTPException(status_code=404, detail="Makro nicht gefunden")
 
-    port = port_row["value"] if port_row else os.getenv("PICO_UART_PORT", "/dev/serial0")
-    baud = int(baud_row["value"] if baud_row else os.getenv("PICO_UART_BAUD", "115200") or "115200")
     try:
         payload = json.loads(row["payload"])
         if row["kind"] == "text":
@@ -755,14 +770,20 @@ def send_pico_macro(macro_id: str) -> dict[str, Any]:
             keys = [str(key).strip().upper() for key in payload.get("keys", []) if str(key).strip()][:8]
             command = {"type": "shortcut", "keys": keys}
 
-        import serial
-        with serial.Serial(port, baud, timeout=1) as connection:
-            connection.write((json.dumps(command, ensure_ascii=False) + "\n").encode("utf-8"))
-            connection.flush()
-            response = connection.readline().decode("utf-8", errors="replace").strip()
-        if response and not response.startswith("ok"):
-            raise RuntimeError(response)
+        _send_pico_command(command)
         return {"status": "sent", "macro": row["name"]}
+    except (ImportError, OSError, ValueError, RuntimeError) as exc:
+        raise HTTPException(status_code=503, detail=f"Pico nicht erreichbar: {exc}")
+
+
+@app.post("/api/pico/led")
+def send_pico_led(body: PicoLedControl) -> dict[str, Any]:
+    mode = body.mode.strip().lower()
+    payload: dict[str, Any] = {"mode": mode, "color": body.color, "count": body.count, "brightness": body.brightness}
+    command = _build_led_command(payload)
+    try:
+        _send_pico_command(command)
+        return {"status": "sent", "mode": command.get("mode", "fill")}
     except (ImportError, OSError, ValueError, RuntimeError) as exc:
         raise HTTPException(status_code=503, detail=f"Pico nicht erreichbar: {exc}")
 

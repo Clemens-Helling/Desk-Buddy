@@ -68,6 +68,8 @@ In den Pico-Macros gibt es zusätzlich den Typ **LED**. Eingaben:
 - `#RRGGBB` (z. B. `#3ecf8e`) setzt alle 8 LEDs auf diese Farbe.
 - `off` schaltet den Strip aus.
 
+Auf der **Macros**-Seite kann der LED-Strip außerdem direkt gesteuert werden (Farbe, Anzahl LEDs, Helligkeit, Aus).
+
 Vor dem Einsatz: Raspberry-Pi UART-Konsole deaktivieren und Serial-Zugriff erlauben. Keine Spannungen von 5 V auf die Pico-GPIOs legen.
 
 ## iCloud-Kalender

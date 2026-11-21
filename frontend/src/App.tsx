@@ -82,6 +82,9 @@ function App() {
   const [picoStatus, setPicoStatus] = useState('Nicht geprüft')
   const [picoPort, setPicoPort] = useState('/dev/serial0')
   const [picoBaud, setPicoBaud] = useState(115200)
+  const [ledColor, setLedColor] = useState('#3ecf8e')
+  const [ledCount, setLedCount] = useState(8)
+  const [ledBrightness, setLedBrightness] = useState(25)
   const swipeStart = useRef<{ x: number; y: number } | null>(null)
 
   const loadTasks = () => {
@@ -127,6 +130,23 @@ function App() {
     await fetch(`/api/pico/macros/${encodeURIComponent(macroId)}/send`, { method: 'POST' })
       .then((response) => response.ok ? response.json() : null)
       .then((result: { macro?: string } | null) => setPicoStatus(result?.macro ? `${result.macro} gesendet` : 'Makro gesendet'))
+      .catch(() => setPicoStatus('Pico nicht erreichbar'))
+  }
+
+  const sendDirectLed = async (mode: 'fill' | 'off') => {
+    setPicoStatus(mode === 'off' ? 'LED aus…' : 'LED wird gesendet…')
+    await fetch('/api/pico/led', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        mode,
+        color: ledColor,
+        count: ledCount,
+        brightness: ledBrightness / 100,
+      }),
+    })
+      .then((response) => response.ok ? response.json() : null)
+      .then(() => setPicoStatus(mode === 'off' ? 'LED aus' : `LED ${ledColor}`))
       .catch(() => setPicoStatus('Pico nicht erreichbar'))
   }
 
@@ -766,6 +786,19 @@ function App() {
 
         {page === 'macros' && <section className="page-view macros-page">
           <div className="macros-heading"><div><h1>Macros</h1><p className="eyebrow">Pico WH · {picoStatus}</p></div><button className="refresh-button" onClick={loadPico}>Prüfen</button></div>
+          <div className="pico-led-direct">
+            <input aria-label="LED-Farbe" type="color" value={ledColor} onChange={(event) => setLedColor(event.target.value)} />
+            <label>LEDs
+              <input aria-label="LED-Anzahl" type="range" min="1" max="8" value={ledCount} onChange={(event) => setLedCount(Number(event.target.value))} />
+              <b>{ledCount}</b>
+            </label>
+            <label>Helligkeit
+              <input aria-label="LED-Helligkeit" type="range" min="5" max="100" step="5" value={ledBrightness} onChange={(event) => setLedBrightness(Number(event.target.value))} />
+              <b>{ledBrightness}%</b>
+            </label>
+            <button onClick={() => void sendDirectLed('fill')}>Senden</button>
+            <button className="danger" onClick={() => void sendDirectLed('off')}><Power size={16} /> Aus</button>
+          </div>
           <div className="macro-grid">
             {picoMacros.map((macro) => (
               <button className="macro-button" key={macro.id} onClick={() => void sendPicoMacro(macro.id)}>
