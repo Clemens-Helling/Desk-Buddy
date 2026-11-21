@@ -1,12 +1,16 @@
+import json
+import logging
 import os
 import sqlite3
 from pathlib import Path
+from time import monotonic
 from typing import Any
 
 import httpx
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -14,6 +18,18 @@ ROOT = Path(__file__).resolve().parent.parent
 load_dotenv(ROOT / "backend" / ".env", override=True)
 DB_PATH = ROOT / "backend" / "deskbuddy.db"
 FRONTEND_DIST = ROOT / "frontend" / "dist"
+
+
+class _IcloudIcalCompatibilityFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        message = record.getMessage()
+        return not (
+            "Ical data was modified to avoid compatibility issues" in message
+            or "Your calendar server breaks the icalendar standard" in message
+        )
+
+
+logging.getLogger().addFilter(_IcloudIcalCompatibilityFilter())
 
 app = FastAPI(title="Deskbuddy API", version="1.0")
 app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"], allow_methods=["*"], allow_headers=["*"])
@@ -44,7 +60,85 @@ def notion_headers() -> dict[str, str]:
 
 @app.get("/api/health")
 def health() -> dict[str, Any]:
-    return {"status": "ok", "notion_configured": bool(os.getenv("NOTION_API_KEY")), "database": str(DB_PATH)}
+    return {"status": "ok", "notion_configured": bool(os.getenv("NOTION_API_KEY")), "gemini_configured": bool(os.getenv("GEMINI_API_KEY")), "database": str(DB_PATH)}
+
+
+AVATAR_EVENTS = {"app_started", "timer_started", "timer_completed", "task_completed", "user_clicked_avatar"}
+AVATAR_EXPRESSIONS = {"neutral", "happy", "focused", "proud", "sleepy", "thinking", "surprised"}
+AVATAR_COLORS = {"default", "focus", "success", "warning"}
+_avatar_last_event: float | None = None
+
+
+def _avatar_fallback(event: str) -> dict[str, str]:
+    fallbacks = {
+        "app_started": ("happy", "default", "Willkommen", "Bereit für einen guten Tag."),
+        "timer_started": ("focused", "focus", "Fokus", "Los geht's – eine Sache nach der anderen."),
+        "timer_completed": ("proud", "success", "Geschafft", "Pause verdient!"),
+        "task_completed": ("proud", "success", "Super gemacht", "Eine Aufgabe weniger."),
+        "user_clicked_avatar": ("happy", "default", "Hi!", "Ich bin bereit."),
+    }
+    expression, mood_color, badge, message = fallbacks[event]
+    return {"expression": expression, "moodColor": mood_color, "badge": badge, "message": message}
+
+
+@app.post("/api/avatar/event")
+async def avatar_event(body: dict[str, Any]) -> dict[str, Any]:
+    global _avatar_last_event
+
+    event = str(body.get("event", ""))
+    if event not in AVATAR_EVENTS:
+        raise HTTPException(status_code=400, detail="Unbekanntes Avatar-Event")
+
+    now = monotonic()
+    if _avatar_last_event is not None and now - _avatar_last_event < 15:
+        return {"source": "cooldown", **_avatar_fallback(event)}
+
+    api_key = os.getenv("GEMINI_API_KEY", "").strip()
+    fallback = _avatar_fallback(event)
+    if not api_key:
+        _avatar_last_event = now
+        return {"source": "fallback", **fallback}
+
+    context = str(body.get("context", "Desk Buddy gestartet"))[:300]
+    model = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite").strip()
+    prompt = (
+        "Du bist der freundliche Avatar eines Raspberry-Pi-Desk-Buddys. "
+        "Antworte ausschliesslich als JSON mit exakt diesen Feldern: "
+        "expression, moodColor, badge, message. "
+        "expression ist eines von neutral|happy|focused|proud|sleepy|thinking|surprised. "
+        "moodColor ist eines von default|focus|success|warning. "
+        "badge maximal 18 Zeichen. message maximal 70 Zeichen. "
+        "Sei kurz, warm und motivierend. Kein Markdown, keine Zusatzerklaerungen. "
+        f"Event: {event}. Kontext: {context}"
+    )
+
+    try:
+        async with httpx.AsyncClient(timeout=8) as client:
+            response = await client.post(
+                f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
+                headers={"x-goog-api-key": api_key, "Content-Type": "application/json"},
+                json={
+                    "contents": [{"parts": [{"text": prompt}]}],
+                    "generationConfig": {
+                        "temperature": 0.7,
+                        "maxOutputTokens": 160,
+                        "responseMimeType": "application/json",
+                    },
+                },
+            )
+            response.raise_for_status()
+        candidates = response.json().get("candidates", [])
+        text = candidates[0].get("content", {}).get("parts", [{}])[0].get("text", "") if candidates else ""
+        data = json.loads(text)
+        expression = data.get("expression") if data.get("expression") in AVATAR_EXPRESSIONS else fallback["expression"]
+        mood_color = data.get("moodColor") if data.get("moodColor") in AVATAR_COLORS else fallback["moodColor"]
+        badge = str(data.get("badge", fallback["badge"])).strip()[:18] or fallback["badge"]
+        message = str(data.get("message", fallback["message"])).strip()[:70] or fallback["message"]
+        _avatar_last_event = now
+        return {"source": "gemini", "expression": expression, "moodColor": mood_color, "badge": badge, "message": message}
+    except (httpx.HTTPError, json.JSONDecodeError, KeyError, IndexError, TypeError, ValueError):
+        _avatar_last_event = now
+        return {"source": "fallback", **fallback}
 
 
 @app.get("/api/tasks")
@@ -171,9 +265,148 @@ def complete_task(page_id: str) -> dict[str, str]:
         return {"status": "pending"}
 
 
+def _icloud_credentials() -> tuple[str, str]:
+    with db() as connection:
+        username_row = connection.execute("SELECT value FROM settings WHERE key='icloudUsername'").fetchone()
+        password_row = connection.execute("SELECT value FROM settings WHERE key='icloudAppPassword'").fetchone()
+    username = (username_row["value"] if username_row else os.getenv("ICLOUD_USERNAME", "")).strip()
+    password = (password_row["value"] if password_row else os.getenv("ICLOUD_APP_PASSWORD", "")).strip()
+    return username, password
+
+
+@app.get("/api/calendar/calendars")
+def get_icloud_calendars() -> dict[str, Any]:
+    username, password = _icloud_credentials()
+    if not username or not password:
+        return {"items": [], "configured": False, "message": "iCloud-Zugangsdaten fehlen"}
+
+    try:
+        from caldav import DAVClient
+
+        client = DAVClient(
+            url=os.getenv("ICLOUD_CALDAV_URL", "https://caldav.icloud.com"),
+            username=username,
+            password=password,
+        )
+        calendars = client.principal().calendars()
+        items = []
+        for calendar in calendars:
+            name = str(getattr(calendar, "name", "") or "").strip()
+            url = str(calendar.url)
+            if url:
+                items.append({"name": name or "Unbenannter Kalender", "url": url})
+        return {"items": items, "configured": True}
+    except Exception:
+        return {"items": [], "configured": True, "error": "iCloud-Verbindung fehlgeschlagen"}
+
+
+class IcloudCalendarConfig(BaseModel):
+    username: str = ""
+    password: str = ""
+    calendarUrls: list[str] = []
+
+
+@app.put("/api/calendar/config")
+def set_icloud_calendar(body: IcloudCalendarConfig) -> dict[str, Any]:
+    username = body.username.strip()
+    password = body.password.strip()
+    calendar_urls = body.calendarUrls
+    if not isinstance(calendar_urls, list):
+        calendar_urls = []
+    calendar_urls = [str(url).strip() for url in calendar_urls if str(url).strip()]
+
+    with db() as connection:
+        if username:
+            connection.execute("INSERT INTO settings(key,value) VALUES('icloudUsername',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (username,))
+        if password:
+            connection.execute("INSERT INTO settings(key,value) VALUES('icloudAppPassword',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (password,))
+        connection.execute("INSERT INTO settings(key,value) VALUES('icloudCalendarUrls',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (json.dumps(calendar_urls),))
+
+    return {"status": "saved", "configured": bool(username or _icloud_credentials()[0])}
+
+
 @app.get("/api/calendar")
 def calendar() -> dict[str, Any]:
-    return {"items": [], "configured": bool(os.getenv("NOTION_CALENDAR_DATABASE_ID")), "synced_at": None}
+    username, password = _icloud_credentials()
+    if not username or not password:
+        with db() as connection:
+            cached = connection.execute("SELECT payload, synced_at FROM notion_cache WHERE kind='calendar'").fetchone()
+        if cached:
+            return {"items": json.loads(cached["payload"]), "configured": False, "synced_at": cached["synced_at"], "offline": True}
+        return {"items": [], "configured": False, "synced_at": None}
+
+    try:
+        from caldav import DAVClient
+        from datetime import datetime, timedelta, timezone
+
+        client = DAVClient(
+            url=os.getenv("ICLOUD_CALDAV_URL", "https://caldav.icloud.com"),
+            username=username,
+            password=password,
+        )
+        principal = client.principal()
+
+        with db() as connection:
+            selected_row = connection.execute("SELECT value FROM settings WHERE key='icloudCalendarUrls'").fetchone()
+        try:
+            selected_urls = json.loads(selected_row["value"]) if selected_row else []
+        except (TypeError, json.JSONDecodeError):
+            selected_urls = []
+        if not isinstance(selected_urls, list):
+            selected_urls = []
+
+        calendars = principal.calendars()
+        selected = [candidate for candidate in calendars if str(candidate.url) in selected_urls]
+        if not selected_row and calendars:
+            selected = calendars[:1]
+
+        if not selected:
+            raise RuntimeError("Keine iCloud-Kalender gefunden")
+
+        start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+        end = start + timedelta(days=14)
+        items = []
+        for calendar in selected:
+            calendar_name = str(getattr(calendar, "name", "") or "Kalender").strip()
+            events = calendar.search(start=start, end=end, event=True, expand=True)
+            for event in events:
+                icalendar_instance = getattr(event, "icalendar_instance", None)
+                if icalendar_instance is None:
+                    continue
+                for component in icalendar_instance.walk("VEVENT"):
+                    title = str(component.get("SUMMARY", "Termin") or "Termin")
+                    dtstart = component.decoded("DTSTART") if component.get("DTSTART") else None
+                    dtend = component.decoded("DTEND") if component.get("DTEND") else None
+                    if dtstart is None:
+                        continue
+                    if hasattr(dtstart, "isoformat"):
+                        start_text = dtstart.isoformat()
+                    else:
+                        start_text = str(dtstart)
+                    if hasattr(dtend, "isoformat"):
+                        end_text = dtend.isoformat()
+                    else:
+                        end_text = str(dtend) if dtend else None
+                    items.append({
+                        "title": title,
+                        "start": start_text,
+                        "end": end_text,
+                        "location": str(component.get("LOCATION", "") or ""),
+                        "all_day": not hasattr(dtstart, "hour"),
+                        "calendarName": calendar_name,
+                    })
+
+        items.sort(key=lambda item: item["start"])
+        synced_at = datetime.now(timezone.utc).isoformat()
+        with db() as connection:
+            connection.execute("INSERT INTO notion_cache(kind,payload,synced_at) VALUES('calendar',?,?) ON CONFLICT(kind) DO UPDATE SET payload=excluded.payload,synced_at=excluded.synced_at", (json.dumps(items), synced_at))
+        return {"items": items, "configured": True, "synced_at": synced_at}
+    except Exception:
+        with db() as connection:
+            cached = connection.execute("SELECT payload, synced_at FROM notion_cache WHERE kind='calendar'").fetchone()
+        if cached:
+            return {"items": json.loads(cached["payload"]), "configured": True, "synced_at": cached["synced_at"], "offline": True}
+        return {"items": [], "configured": True, "synced_at": None, "offline": True, "error": "iCloud-Kalender nicht erreichbar"}
 
 
 @app.get("/api/notes")
@@ -310,7 +543,7 @@ def set_weather_config(body: dict[str, str]) -> dict[str, str]:
 def get_settings() -> dict[str, str]:
     with db() as connection:
         rows = connection.execute("SELECT key,value FROM settings").fetchall()
-    return {row["key"]: row["value"] for row in rows if row["key"] not in {"weatherApiKey", "notionApiKey"}}
+    return {row["key"]: row["value"] for row in rows if row["key"] not in {"weatherApiKey", "notionApiKey", "icloudAppPassword"}}
 
 
 @app.put("/api/settings/{key}")

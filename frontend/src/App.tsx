@@ -1,16 +1,20 @@
 import { useEffect, useRef, useState } from 'react'
-import { Check, Cloud, CloudRain, CloudSun, Coffee, Home, ListTodo, Moon, RefreshCw, Settings, Snowflake, Sun, TimerReset, X } from 'lucide-react'
+import { CalendarDays, Check, Cloud, CloudRain, CloudSun, Coffee, Home, ListTodo, Moon, RefreshCw, Settings, Snowflake, Sun, TimerReset, X } from 'lucide-react'
 import './App.css'
 
-type Page = 'home' | 'tasks' | 'timer' | 'settings'
-type Mood = 'happy' | 'focused' | 'sleepy'
+type Page = 'home' | 'tasks' | 'calendar' | 'timer' | 'settings'
+type Mood = 'neutral' | 'happy' | 'focused' | 'proud' | 'sleepy' | 'thinking' | 'surprised'
+type MoodColor = 'default' | 'focus' | 'success' | 'warning'
+type AvatarReaction = { expression: Mood; moodColor: MoodColor; badge: string; message: string }
 type DeskTask = { id: string; title: string; done: boolean; status?: string; due?: string }
+type CalendarItem = { title: string; start: string; end?: string; location?: string; all_day?: boolean; calendarName?: string }
+type IcloudCalendar = { name: string; url: string }
 type TimerMode = 'timer' | 'pomodoro'
 type TimerPhase = 'work' | 'break'
 
-function BuddyFace({ mood }: { mood: Mood }) {
+function BuddyFace({ mood, onClick }: { mood: Mood; onClick?: () => void }) {
   return (
-    <div className={`buddy buddy-${mood}`} aria-label={`Deskbuddy ist ${mood}`}>
+    <button type="button" className={`buddy buddy-${mood}`} aria-label={`Deskbuddy ist ${mood}. Avatar anklicken`} onClick={onClick}>
       <svg viewBox="0 0 300 260" role="img">
         <ellipse className="buddy-shadow" cx="150" cy="231" rx="92" ry="14" />
         <path className="buddy-ear left-ear" d="M48 116C25 102 20 70 41 57c18-11 38 5 42 31" />
@@ -23,8 +27,12 @@ function BuddyFace({ mood }: { mood: Mood }) {
         {mood === 'happy' && <path className="mouth happy" d="M127 176c12 17 34 17 46 0" />}
         {mood === 'focused' && <><path className="brow left" d="M94 99l36 8" /><path className="brow right" d="M206 99l-36 8" /><path className="mouth" d="M137 184h26" /></>}
         {mood === 'sleepy' && <><path className="mouth sleepy" d="M136 183c9 8 19 8 28 0" /><path className="sleep-z" d="M222 86l13-13m-1 24 16-16" /></>}
+        {mood === 'proud' && <path className="mouth happy" d="M127 176c12 17 34 17 46 0" />}
+        {mood === 'thinking' && <><path className="brow left" d="M98 100l30 8" /><path className="brow right" d="M202 100l-30 8" /><path className="mouth" d="M137 184h26" /></>}
+        {mood === 'surprised' && <><ellipse className="surprised-mouth" cx="150" cy="181" rx="12" ry="16" /><path className="brow left" d="M94 96l36 5" /><path className="brow right" d="M206 96l-36 5" /></>}
+        {mood === 'neutral' && <path className="mouth" d="M137 184h26" />}
       </svg>
-    </div>
+    </button>
   )
 }
 
@@ -49,7 +57,16 @@ function App() {
   const [brightness, setBrightness] = useState(() => Number(localStorage.getItem('deskbuddy_brightness') || 70))
   const [weather, setWeather] = useState<{ temperature: number | null; condition: string; icon: string; city: string; status: string }>(() => ({ temperature: null, condition: 'Wetter wird geladen', icon: 'unknown', city: '', status: 'loading' }))
   const [weatherApiKey, setWeatherApiKey] = useState('')
+  const [avatarReaction, setAvatarReaction] = useState<AvatarReaction>({ expression: 'happy', moodColor: 'default', badge: 'Bereit', message: 'Guten Tag!' })
+  const avatarStarted = useRef(false)
   const [weatherCity, setWeatherCity] = useState(() => localStorage.getItem('deskbuddy_weather_city') || 'Berlin')
+  const [calendarItems, setCalendarItems] = useState<CalendarItem[]>([])
+  const [calendarStatus, setCalendarStatus] = useState('Nicht konfiguriert')
+  const [calendarRefreshing, setCalendarRefreshing] = useState(false)
+  const [icloudCalendars, setIcloudCalendars] = useState<IcloudCalendar[]>([])
+  const [icloudUsername, setIcloudUsername] = useState('')
+  const [icloudPassword, setIcloudPassword] = useState('')
+  const [icloudCalendarUrls, setIcloudCalendarUrls] = useState<string[]>([])
   const swipeStart = useRef<{ x: number; y: number } | null>(null)
 
   const loadTasks = () => {
@@ -59,10 +76,52 @@ function App() {
       .catch(() => setTasks([]))
   }
 
+  const loadCalendar = (showRefreshing = true) => {
+    if (showRefreshing) {
+      setCalendarRefreshing(true)
+      setCalendarStatus('Wird aktualisiert…')
+    }
+    fetch('/api/calendar', { cache: 'no-store' })
+      .then((response) => response.ok ? response.json() : null)
+      .then((result: { items?: CalendarItem[]; configured?: boolean; offline?: boolean } | null) => {
+        setCalendarItems(result?.items || [])
+        if (!result?.configured) setCalendarStatus('Nicht konfiguriert')
+        else if (result.offline) setCalendarStatus('Offline · Cache')
+        else setCalendarStatus('Synchronisiert')
+      })
+      .catch(() => setCalendarStatus('Nicht erreichbar'))
+      .finally(() => setCalendarRefreshing(false))
+  }
+
+  const loadIcloudCalendars = () => {
+    fetch('/api/calendar/calendars')
+      .then((response) => response.ok ? response.json() : null)
+      .then((result: { items?: IcloudCalendar[]; configured?: boolean; error?: string } | null) => {
+        setIcloudCalendars(result?.items || [])
+        if (!result?.configured) setCalendarStatus('Nicht konfiguriert')
+        else if (result.error) setCalendarStatus(result.error)
+      })
+      .catch(() => setCalendarStatus('Nicht erreichbar'))
+  }
+
   useEffect(() => {
     const clock = window.setInterval(() => setNow(new Date()), 1000)
     return () => window.clearInterval(clock)
   }, [])
+
+  const triggerAvatar = (event: string, context = '') => {
+    setAvatarReaction((current) => ({ ...current, expression: 'thinking' }))
+    void fetch('/api/avatar/event', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ event, context }),
+    })
+      .then((response) => response.ok ? response.json() : null)
+      .then((reaction: AvatarReaction | null) => {
+        if (reaction?.expression) setAvatarReaction(reaction)
+      })
+      .catch(() => setAvatarReaction({ expression: 'neutral', moodColor: 'default', badge: 'Offline', message: 'Ich bleibe bei dir.' }))
+  }
 
   const loadWeather = () => {
     fetch('/api/weather')
@@ -72,9 +131,16 @@ function App() {
   }
 
   useEffect(() => {
+    if (!avatarStarted.current) {
+      avatarStarted.current = true
+      triggerAvatar('app_started', 'Desk Buddy wurde gestartet')
+    }
     loadTasks()
     loadWeather()
+    loadCalendar()
+    loadIcloudCalendars()
     const weatherRefresh = window.setInterval(loadWeather, 30 * 60 * 1000)
+    const calendarRefresh = window.setInterval(() => loadCalendar(false), 15 * 60 * 1000)
 
     fetch('/api/settings')
       .then((response) => response.ok ? response.json() : {})
@@ -82,6 +148,13 @@ function App() {
         if (settings.darkMode !== undefined) setDarkMode(settings.darkMode === 'true')
         if (settings.language) setLanguage(settings.language)
         if (settings.syncMinutes) setSyncMinutes(settings.syncMinutes)
+        if (settings.icloudUsername) {
+          setIcloudUsername(settings.icloudUsername)
+          window.setTimeout(loadIcloudCalendars, 0)
+        }
+        if (settings.icloudCalendarUrls) {
+          try { setIcloudCalendarUrls(JSON.parse(settings.icloudCalendarUrls)) } catch { setIcloudCalendarUrls([]) }
+        } else if (settings.icloudCalendarUrl) setIcloudCalendarUrls([settings.icloudCalendarUrl])
         if (settings.weatherCity) {
           setWeatherCity(settings.weatherCity)
           localStorage.setItem('deskbuddy_weather_city', settings.weatherCity)
@@ -119,7 +192,10 @@ function App() {
       .then((result) => setNotionStatus(result.status === 'ok' ? 'Verbunden' : 'Nicht konfiguriert'))
       .catch(() => setNotionStatus('Nicht erreichbar'))
 
-    return () => window.clearInterval(weatherRefresh)
+    return () => {
+      window.clearInterval(weatherRefresh)
+      window.clearInterval(calendarRefresh)
+    }
   }, [])
 
   useEffect(() => {
@@ -160,6 +236,7 @@ function App() {
       if (value > 1) return value - 1
       if (timerMode === 'pomodoro') {
         setRunning(false)
+        triggerAvatar('timer_completed', timerMode === 'pomodoro' ? 'Pomodoro-Arbeitsphase beendet' : 'Timer abgelaufen')
         if (timerPhase === 'work') {
           setPomodoroCount((count) => {
             const nextCount = count + 1
@@ -179,16 +256,34 @@ function App() {
     return () => window.clearInterval(timer)
   }, [running, timerMode, timerPhase, workMinutes, breakMinutes])
 
-  const mood: Mood = running ? 'focused' : secondsLeft === 0 ? 'sleepy' : 'happy'
+  const mood: Mood = avatarReaction.expression
   const time = now.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })
   const date = now.toLocaleDateString('de-DE', { weekday: 'long', day: '2-digit', month: 'long' })
   const timer = `${Math.floor(secondsLeft / 60).toString().padStart(2, '0')}:${(secondsLeft % 60).toString().padStart(2, '0')}`
   const todayLocal = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
   const todayTasks = tasks.filter((task) => task.due?.slice(0, 10) === todayLocal)
+  const nextCalendarItem = [...calendarItems]
+    .filter((item) => {
+      if (item.all_day) return item.start.slice(0, 10) >= todayLocal
+      const start = new Date(item.start)
+      return !Number.isNaN(start.getTime()) && start >= now
+    })
+    .sort((a, b) => a.start.localeCompare(b.start))[0]
+  const calendarDays = Array.from({ length: 7 }, (_, index) => {
+    const date = new Date(now)
+    date.setHours(0, 0, 0, 0)
+    date.setDate(date.getDate() + index)
+    const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+    return { date, key, items: calendarItems.filter((item) => item.start.slice(0, 10) === key).sort((a, b) => a.start.localeCompare(b.start)) }
+  })
   const getTaskStatus = (task: DeskTask): 'Nicht begonnen' | 'Begonnen' | 'Erledigt' => task.status === 'Begonnen' || task.status === 'Erledigt' ? task.status : 'Nicht begonnen'
 
   const setTaskStatus = async (id: string, status: 'Nicht begonnen' | 'Begonnen' | 'Erledigt') => {
     setTasks((items) => items.map((item) => item.id === id ? { ...item, status, done: status === 'Erledigt' } : item))
+    if (status === 'Erledigt') {
+      const task = tasks.find((item) => item.id === id)
+      triggerAvatar('task_completed', task?.title ? `Aufgabe erledigt: ${task.title}` : 'Aufgabe erledigt')
+    }
     await fetch(`/api/tasks/${encodeURIComponent(id)}/status`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -275,6 +370,24 @@ function App() {
     }).catch(() => setSettingsSaved(false))
   }
 
+  const saveIcloudCalendar = async () => {
+    await fetch('/api/calendar/config', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        username: icloudUsername,
+        password: icloudPassword,
+        calendarUrls: icloudCalendarUrls,
+      }),
+    }).then((response) => response.ok ? response.json() : null).then(() => {
+      setIcloudPassword('')
+      setSettingsSaved(true)
+      window.setTimeout(() => setSettingsSaved(false), 1600)
+      window.setTimeout(loadIcloudCalendars, 50)
+      window.setTimeout(loadCalendar, 100)
+    }).catch(() => setSettingsSaved(false))
+  }
+
   const testNotion = async () => {
     setNotionStatus('Wird geprüft…')
     try {
@@ -304,12 +417,18 @@ function App() {
         {page === 'home' && <>
           <header className="topbar">
             <div className="brand"><span className="brand-dot" />deskbuddy</div>
-            <div className="weather"><WeatherIcon /><span>{weather.temperature === null ? '—°' : `${weather.temperature}°`}</span><small>{weather.status === 'offline' ? 'Offline · ' : ''}{weather.condition}</small></div>
+            <div className="topbar-status">
+              {nextCalendarItem && <button className="next-event" onClick={() => setPage('calendar')}>
+                <small>{nextCalendarItem.all_day ? 'Ganztägig' : new Date(nextCalendarItem.start).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}</small>
+                <span>{nextCalendarItem.title}</span>
+              </button>}
+              <div className="weather"><WeatherIcon /><span>{weather.temperature === null ? '—°' : `${weather.temperature}°`}</span><small>{weather.status === 'offline' ? 'Offline · ' : ''}{weather.condition}</small></div>
+            </div>
           </header>
           <div className="home-grid">
             <section className="face-zone">
-              <BuddyFace mood={mood} />
-              <button className="mood-chip" onClick={() => setPage('settings')}>Guten Nachmittag <span>·</span></button>
+              <BuddyFace mood={mood} onClick={() => triggerAvatar('user_clicked_avatar', 'Der Benutzer hat den Avatar berührt')} />
+              <button className={`mood-chip color-${avatarReaction.moodColor}`} onClick={() => triggerAvatar('user_clicked_avatar', 'Der Benutzer hat die Avatar-Nachricht berührt')}><b>{avatarReaction.badge}</b> <span>·</span> {avatarReaction.message}</button>
             </section>
             <section className="info-zone">
               <div className="clock"><strong>{time}</strong><span>{date}</span></div>
@@ -351,6 +470,31 @@ function App() {
           </div>
         </section>}
 
+        {page === 'calendar' && <section className="page-view calendar-page">
+          <div className="calendar-page-heading">
+            <div><h1>Kalender</h1><p className="eyebrow">Nächste 7 Tage · {calendarStatus}</p></div>
+            <button className="refresh-button" disabled={calendarRefreshing} onClick={() => loadCalendar(true)}>{calendarRefreshing ? 'Aktualisiere…' : 'Aktualisieren'}</button>
+          </div>
+          <div className="calendar-week">
+            {calendarDays.map((day) => (
+              <article className={`calendar-day${day.key === todayLocal ? ' today' : ''}`} key={day.key}>
+                <header><b>{day.date.toLocaleDateString('de-DE', { weekday: 'short' })}</b><span>{day.date.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })}</span></header>
+                <div className="calendar-events">
+                  {day.items.map((item) => (
+                    <button className="calendar-event" key={`${item.start}-${item.title}-${item.calendarName}`}>
+                      <small>{item.all_day ? 'Ganztägig' : new Date(item.start).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}</small>
+                      <b>{item.title}</b>
+                      {item.location && <span>{item.location}</span>}
+                      {item.calendarName && <em>{item.calendarName}</em>}
+                    </button>
+                  ))}
+                  {day.items.length === 0 && <span className="calendar-empty">—</span>}
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>}
+
         {page === 'timer' && <section className="timer-view">
           <div>
             <div className="timer-mode-switch"><button className={timerMode === 'timer' ? 'active' : ''} onClick={() => chooseTimerMode('timer')}>Normaler Timer</button><button className={timerMode === 'pomodoro' ? 'active' : ''} onClick={() => chooseTimerMode('pomodoro')}>Pomodoro</button></div>
@@ -358,8 +502,8 @@ function App() {
             <strong>{timer}</strong>
             {timerMode === 'timer' ? <div className="timer-adjust"><button aria-label="Eine Minute abziehen" onClick={() => changeWorkMinutes(workMinutes - 1)}>−</button><span>{workMinutes} Minuten</span><button aria-label="Eine Minute hinzufügen" onClick={() => changeWorkMinutes(workMinutes + 1)}>+</button></div> : <div className="pomodoro-meta"><span>{pomodoroCount % 4}/4 Durchgänge</span><b>{timerPhase === 'work' ? workMinutes : breakMinutes} Min.</b></div>}
           </div>
-          <BuddyFace mood={mood} />
-          <div className="timer-actions"><button onClick={() => setRunning((value) => !value)}>{running ? 'Pause' : secondsLeft === 0 ? 'Neu starten' : 'Start'}</button><button className="round-action" onClick={() => { setRunning(false); setTimerPhase('work'); setSecondsLeft(workMinutes * 60) }}><TimerReset size={22} /></button></div>
+          <BuddyFace mood={mood} onClick={() => triggerAvatar('user_clicked_avatar', 'Der Benutzer hat den Timer-Avatar berührt')} />
+          <div className="timer-actions"><button onClick={() => { if (!running) triggerAvatar('timer_started', timerMode === 'pomodoro' ? 'Pomodoro gestartet' : 'Timer gestartet'); setRunning((value) => !value) }}>{running ? 'Pause' : secondsLeft === 0 ? 'Neu starten' : 'Start'}</button><button className="round-action" onClick={() => { setRunning(false); setTimerPhase('work'); setSecondsLeft(workMinutes * 60) }}><TimerReset size={22} /></button></div>
         </section>}
 
         {page === 'settings' && <section className="page-view settings">
@@ -403,6 +547,27 @@ function App() {
               <button onClick={saveWeather}>Speichern</button>
             </div>
           </div>
+          <div className="setting-row icloud-setting">
+            <span><b>iCloud-Kalender</b><small>{calendarStatus}</small></span>
+            <div className="icloud-config">
+              <input aria-label="Apple-ID" placeholder="Apple-ID / E-Mail" value={icloudUsername} onChange={(event) => setIcloudUsername(event.target.value)} />
+              <input aria-label="App-spezifisches Passwort" type="password" placeholder="App-Passwort" value={icloudPassword} onChange={(event) => setIcloudPassword(event.target.value)} />
+              <div className="calendar-checklist" aria-label="Angezeigte iCloud-Kalender">
+                {icloudCalendars.map((item) => (
+                  <label key={item.url}>
+                    <input
+                      type="checkbox"
+                      checked={icloudCalendarUrls.includes(item.url)}
+                      onChange={(event) => setIcloudCalendarUrls((current) => event.target.checked ? [...current, item.url] : current.filter((url) => url !== item.url))}
+                    />
+                    <span>{item.name}</span>
+                  </label>
+                ))}
+                {icloudCalendars.length === 0 && <span>Keine Kalender geladen</span>}
+              </div>
+              <button onClick={saveIcloudCalendar}>Speichern</button>
+            </div>
+          </div>
           <label className="setting-row sync-row">
             <span><b>Synchronisierung</b><small>Notion-Aktualisierung</small></span>
             <select value={syncMinutes} onChange={(event) => { setSyncMinutes(event.target.value); localStorage.setItem('deskbuddy_sync', event.target.value); void saveSetting('syncMinutes', event.target.value) }}>
@@ -435,7 +600,7 @@ function App() {
             <button onClick={() => { const next = !darkMode; setDarkMode(next); void saveSetting('darkMode', String(next)) }}>
               <Moon size={20} /><span>{darkMode ? 'Hellmodus' : 'Dark Mode'}</span>
             </button>
-            <button onClick={() => { setRunning((value) => !value); setQuickMenuOpen(false) }}>
+            <button onClick={() => { if (!running) triggerAvatar('timer_started', 'Timer über Schnellmenü gestartet'); setRunning((value) => !value); setQuickMenuOpen(false) }}>
               <TimerReset size={20} /><span>{running ? 'Timer pausieren' : 'Timer starten'}</span>
             </button>
             <button onClick={() => { loadTasks(); setQuickMenuOpen(false) }}>
@@ -451,6 +616,7 @@ function App() {
       <nav className="nav-bar" aria-label="Hauptnavigation">
         <button className={page === 'home' ? 'active' : ''} onClick={() => setPage('home')}><Home size={21} /><span>Home</span></button>
         <button className={page === 'tasks' ? 'active' : ''} onClick={() => setPage('tasks')}><ListTodo size={21} /><span>Aufgaben</span></button>
+        <button className={page === 'calendar' ? 'active' : ''} onClick={() => setPage('calendar')}><CalendarDays size={21} /><span>Kalender</span></button>
         <button className={page === 'timer' ? 'active' : ''} onClick={() => setPage('timer')}><Coffee size={21} /><span>Timer</span></button>
         <button className={page === 'settings' ? 'active' : ''} onClick={() => setPage('settings')}><Settings size={21} /><span>Optionen</span></button>
       </nav>

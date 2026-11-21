@@ -5,19 +5,23 @@
 .app-shell {
   position: relative;
   width: 100vw; height: 100vh; min-height: 480px; overflow: hidden;
-  display: grid; grid-template-columns: 1fr 74px;
+  display: grid; grid-template-columns: 1fr 74px; grid-template-rows: minmax(0, 100%);
   background: #edece2; color: var(--ink); font-family: Inter, "Segoe UI", sans-serif;
 }
-.main-panel { position: relative; min-width: 0; height: 100%; background: var(--cream); }
+.main-panel { position: relative; grid-row: 1; grid-column: 1; min-width: 0; min-height: 0; height: 100%; background: var(--cream); }
 .topbar { height: 64px; display: flex; align-items: center; justify-content: space-between; padding: 0 30px 0 34px; }
 .brand { display: flex; align-items: center; gap: 9px; font-size: 17px; font-weight: 750; letter-spacing: -.4px; }
 .brand-dot { width: 14px; height: 14px; border-radius: 50%; background: var(--orange); box-shadow: 8px 3px 0 -3px var(--yellow); }
+.topbar-status { display: flex; align-items: center; gap: 14px; }
+.next-event { max-width: 190px; min-height: 42px; border: 0; border-radius: 14px; background: #e7eadf; color: var(--ink); display: flex; flex-direction: column; align-items: flex-end; justify-content: center; padding: 5px 10px; }
+.next-event small { color: var(--muted); font-size: 9px; }
+.next-event span { max-width: 170px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
 .weather { display: grid; grid-template-columns: 25px auto; grid-template-rows: 21px 16px; align-items: center; column-gap: 5px; }
 .weather span { font-size: 18px; font-weight: 750; }
 .weather small { grid-column: 2; color: var(--muted); font-size: 10px; }
 .home-grid { height: calc(100% - 64px); display: grid; grid-template-columns: 55% 45%; }
 .face-zone { position: relative; display: flex; align-items: center; flex-direction: column; justify-content: center; padding-bottom: 18px; }
-.buddy { width: 278px; height: 280px; }
+.buddy { width: 278px; height: 280px; border: 0; padding: 0; background: transparent; color: inherit; cursor: pointer; }
 .buddy svg { width: 100%; height: 100%; overflow: visible; }
 .buddy-shadow { fill: #c8cbbd; opacity: .42; }
 .buddy-body { fill: #dce7da; stroke: #cbd8cd; stroke-width: 2; }
@@ -33,6 +37,10 @@
 @keyframes nod { 0%,100% { transform: rotate(-1deg); } 50% { transform: rotate(1deg) translateY(-2px); } }
 .mood-chip { min-height: 38px; border: 0; border-radius: 20px; background: #fffdf6; color: #68777a; padding: 8px 16px; font-size: 12px; box-shadow: 0 3px 12px rgba(61,73,68,.06); }
 .mood-chip span { color: var(--orange); margin-left: 4px; }
+.mood-chip.color-focus { background: #dfe8dc; }
+.mood-chip.color-success { background: #d9e8d5; }
+.mood-chip.color-warning { background: #f1dfb3; }
+.surprised-mouth { fill: #26343a; }
 .info-zone { display: flex; flex-direction: column; justify-content: center; gap: 10px; padding: 0 27px 15px 5px; }
 .clock { display: flex; flex-direction: column; margin-bottom: 3px; }
 .clock strong { font-size: 66px; line-height: .95; letter-spacing: -4px; font-weight: 760; }
@@ -56,7 +64,7 @@
 .task-status-badge.status-nicht-begonnen { background: #dfe4d8; color: #68736d; }
 .task-status-badge.status-begonnen { background: #efcf93; color: #755f32; }
 .task-status-badge.status-erledigt { background: #d1dfd2; color: #587060; }
-.nav-bar { height: 100%; background: #faf9f2; border-left: 1px solid #e7e5d9; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 10px 6px; }
+.nav-bar { grid-row: 1; grid-column: 2; align-self: stretch; height: 100%; min-height: 0; background: #faf9f2; border-left: 1px solid #e7e5d9; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 10px 6px; }
 .nav-bar button { width: 62px; height: 74px; border: 0; border-radius: 18px; background: transparent; color: #929a94; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; }
 .nav-bar button span { font-size: 9px; }
 .nav-bar button.active { background: #e2e8dc; color: #4f6458; }
@@ -171,6 +179,7 @@
 .tasks-heading h1 { font-size: 32px; }
 .tasks-heading .eyebrow { margin: 2px 0 0; }
 .refresh-button { min-width: 94px; height: 42px; border: 1px solid #d7dacd; border-radius: 21px; background: #faf9f2; color: var(--ink); font-size: 11px; }
+.refresh-button:disabled { opacity: .58; }
 .task-filters { height: 32px; display: flex; align-items: center; gap: 5px; margin: 0 0 8px; }
 .task-filters button { height: 28px; min-width: 96px; padding: 0 12px; border: 0; border-radius: 14px; background: #e8e7dc; color: #748079; font-size: 10px; }
 .task-filters button.active { background: #d8e4d8; color: #52675a; }
@@ -185,5 +194,80 @@
 .status-erledigt { background: #d8e6d8; color: #587060; }
 .status-nicht-begonnen { background: #ebe9dc; }
 .empty-state { height: 100px; display: grid; place-items: center; color: var(--muted); font-size: 13px; }
+.calendar-card { height: 72px; border-radius: 20px; background: #e7e2d4; padding: 8px 13px; overflow: hidden; }
+.calendar-heading { height: 20px; display: flex; align-items: center; justify-content: space-between; font-size: 12px; }
+.calendar-heading small { color: var(--muted); font-size: 9px; }
+.calendar-row { min-height: 24px; display: grid; grid-template-columns: 58px 1fr; align-items: center; gap: 7px; font-size: 11px; }
+.calendar-row b { color: #718176; font-size: 10px; }
+.calendar-row span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.icloud-setting { height: 132px; min-height: 132px; }
+.icloud-config { display: grid; grid-template-columns: 130px 130px 150px 82px; gap: 6px; }
+.icloud-config input, .icloud-config select { min-width: 0; height: 38px; border: 1px solid #d6d8ca; border-radius: 10px; background: #faf9f2; color: var(--ink); padding: 0 8px; font-size: 11px; }
+.icloud-config button { height: 38px; border: 0; border-radius: 19px; background: #dce7dc; color: #52675a; font-size: 11px; }
+.app-shell.dark .calendar-card { background: #343b35; }
+.app-shell.dark .icloud-config input, .app-shell.dark .icloud-config select { background: #303936; border-color: #46504c; color: #edf1ea; }
+.app-shell.dark .icloud-config button { background: #46594d; color: #edf1ea; }
+.calendar-page { height: 100%; padding: 18px 24px 14px; overflow: hidden; }
+.calendar-page-heading { height: 58px; display: flex; align-items: flex-start; justify-content: space-between; }
+.calendar-page-heading h1 { margin: 0; font-size: 32px; }
+.calendar-page-heading .eyebrow { margin: 2px 0 0; }
+.calendar-week { height: calc(100% - 58px); display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 7px; }
+.calendar-day { min-width: 0; border-radius: 16px; background: #ebe9dc; padding: 8px 7px; overflow: hidden; }
+.calendar-day.today { background: #dfe8dc; }
+.calendar-day header { height: 38px; display: flex; flex-direction: column; align-items: center; border-bottom: 1px solid rgba(38,52,58,.08); }
+.calendar-day header b { font-size: 11px; text-transform: capitalize; }
+.calendar-day header span { color: var(--muted); font-size: 10px; }
+.calendar-events { height: calc(100% - 38px); overflow-y: auto; scrollbar-width: thin; }
+.calendar-event { width: 100%; min-height: 62px; margin-top: 6px; border: 0; border-radius: 11px; background: #faf9f2; color: var(--ink); display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 7px; text-align: left; }
+.calendar-event small { color: #718176; font-size: 9px; }
+.calendar-event b { width: 100%; font-size: 10px; overflow: hidden; text-overflow: ellipsis; }
+.calendar-event span, .calendar-event em { width: 100%; color: var(--muted); font-size: 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.calendar-event em { font-style: normal; opacity: .8; }
+.calendar-empty { display: block; padding-top: 18px; text-align: center; color: var(--muted); font-size: 11px; }
+.icloud-setting { height: 170px; min-height: 170px; }
+.icloud-config { display: grid; grid-template-columns: 130px 130px 150px 82px; gap: 6px; align-items: start; }
+.calendar-checklist { width: 150px; max-height: 76px; overflow-y: auto; display: flex; flex-direction: column; gap: 3px; }
+.calendar-checklist label { min-height: 24px; display: flex; align-items: center; gap: 5px; font-size: 10px; cursor: pointer; }
+.calendar-checklist label span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.calendar-checklist input { width: 16px; height: 16px; accent-color: #718d77; }
+.app-shell.dark .next-event { background: #35403a; }
+.app-shell.dark .calendar-day { background: #343b35; }
+.app-shell.dark .calendar-day.today { background: #46594d; }
+.app-shell.dark .calendar-event { background: #303936; }
+@media (max-height: 480px) {
+  .topbar { height: 52px; padding: 0 16px 0 20px; }
+  .brand { font-size: 15px; }
+  .topbar-status { gap: 8px; }
+  .next-event { max-width: 150px; min-height: 38px; }
+  .next-event span { max-width: 130px; }
+  .weather { grid-template-columns: 22px auto; }
+  .weather span { font-size: 16px; }
+  .home-grid { height: calc(100% - 52px); }
+  .nav-bar { gap: 4px; justify-content: flex-start; padding: 10px 6px 6px; }
+  .nav-bar button { height: calc((480px - 20px) / 5 - 4px); max-height: 74px; }
+  .calendar-page { padding: 8px 12px 8px; }
+  .calendar-page-heading { height: 46px; align-items: flex-start; }
+  .calendar-page-heading > div { height: 46px; display: flex; flex-direction: column; justify-content: flex-start; }
+  .calendar-page-heading h1 { font-size: 26px; line-height: 28px; letter-spacing: -1px; }
+  .calendar-page-heading .eyebrow { font-size: 9px; line-height: 10px; margin: -2px 0 0; }
+  .calendar-page-heading .refresh-button { min-width: 82px; height: 38px; margin-top: 4px; }
+  .calendar-week { height: calc(100% - 46px); gap: 5px; }
+  .calendar-day { border-radius: 12px; padding: 5px 4px; }
+  .calendar-day header { height: 34px; }
+  .calendar-day header b { font-size: 10px; }
+  .calendar-day header span { font-size: 9px; }
+  .calendar-events { height: calc(100% - 34px); }
+  .calendar-event { min-height: 54px; margin-top: 4px; border-radius: 8px; padding: 5px; }
+  .calendar-event b { font-size: 9px; }
+  .calendar-event span, .calendar-event em { display: none; }
+  .icloud-setting { height: 156px; min-height: 156px; }
+  .icloud-config { grid-template-columns: 118px 118px 130px 72px; align-items: start; }
+  .icloud-config input, .icloud-config select, .icloud-config button { height: 34px; }
+  .calendar-checklist { width: 130px; max-height: 58px; }
+  .settings { padding: 14px 24px 28px; }
+  .settings-heading { height: 38px; min-height: 38px; }
+  .settings-heading h1 { font-size: 28px; }
+  .setting-row { min-height: 58px; height: 58px; }
+}
 @media (orientation: portrait), (max-height: 479px) { .app-shell { grid-template-columns: 1fr 64px; } .clock strong { font-size: 54px; } .buddy { width: 230px; height: 238px; } }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; } }
