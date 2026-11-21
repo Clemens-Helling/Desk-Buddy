@@ -54,14 +54,19 @@ Der Pico WH verbindet sich per **MicroPython** als Bluetooth-Tastatur mit dem PC
 - Pico `GP1 / RX` → Raspberry-Pi `GPIO14 / TX`, Pin 8
 - Gemeinsame Masse an Pin 6, 9, 14, 20, 25, 30, 34, 39
 - UART: 115200 Baud
+- Optional LED-Strip (WS2812/SK6812): `DIN` an Pico `GP2`, gemeinsame Masse, 5V an `VSYS`
 
 Firmware liegt unter `firmware/pico/code.py` und benötigt auf dem Pico WH keine externen Python-Pakete. Die Makros werden auf der Config-Seite unter `http://<PI-IP>:8000/config` bearbeitet. Die Makro-Seite auf dem Pi sendet die ausgewählten Aktionen über UART an den Pico.
 
 Setup kurz:
 1. Aktuelle MicroPython-`uf2` für Pico W/WH flashen.
 2. `firmware/pico/code.py` als `main.py` auf den Pico kopieren.
-3. Am PC Bluetooth-Gerät `DeskBuddy-Macro` koppeln.
+3. Am PC Bluetooth-Gerät `DeskBuddy` koppeln.
 4. Danach sendet der Pi Shortcuts/Text per UART (115200).
+
+In den Pico-Macros gibt es zusätzlich den Typ **LED**. Eingaben:
+- `#RRGGBB` (z. B. `#3ecf8e`) setzt alle 8 LEDs auf diese Farbe.
+- `off` schaltet den Strip aus.
 
 Vor dem Einsatz: Raspberry-Pi UART-Konsole deaktivieren und Serial-Zugriff erlauben. Keine Spannungen von 5 V auf die Pico-GPIOs legen.
 

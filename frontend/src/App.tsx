@@ -9,7 +9,7 @@ type AvatarReaction = { expression: Mood; moodColor: MoodColor; badge: string; m
 type DeskTask = { id: string; title: string; done: boolean; status?: string; due?: string }
 type CalendarItem = { title: string; start: string; end?: string; location?: string; all_day?: boolean; calendarName?: string }
 type IcloudCalendar = { name: string; url: string }
-type PicoMacro = { id: string; name: string; kind: 'shortcut' | 'text'; payload: { keys?: string[]; text?: string } }
+type PicoMacro = { id: string; name: string; kind: 'shortcut' | 'text' | 'led'; payload: { keys?: string[]; text?: string; color?: string; count?: number; brightness?: number; mode?: 'fill' | 'off' } }
 type TimerMode = 'timer' | 'pomodoro'
 type TimerPhase = 'work' | 'break'
 
@@ -609,15 +609,17 @@ function App() {
         </div>
       </div>
       <div className="setting-row pico-macro-setting">
-        <span><b>Pico-Macros</b><small>Shortcuts oder Text senden</small></span>
+        <span><b>Pico-Macros</b><small>Shortcuts, Text oder LED senden</small></span>
         <div className="pico-macro-editor">
           {picoMacros.map((macro, index) => (
             <div className="pico-macro-row" key={macro.id}>
               <input aria-label="Macro-Name" value={macro.name} onChange={(event) => setPicoMacros((items) => items.map((item, itemIndex) => itemIndex === index ? { ...item, name: event.target.value } : item))} />
-              <select aria-label="Macro-Typ" value={macro.kind} onChange={(event) => setPicoMacros((items) => items.map((item, itemIndex) => itemIndex === index ? { ...item, kind: event.target.value as 'shortcut' | 'text', payload: event.target.value === 'text' ? { text: '' } : { keys: [] } } : item))}><option value="shortcut">Tasten</option><option value="text">Text</option></select>
+              <select aria-label="Macro-Typ" value={macro.kind} onChange={(event) => setPicoMacros((items) => items.map((item, itemIndex) => itemIndex === index ? { ...item, kind: event.target.value as 'shortcut' | 'text' | 'led', payload: event.target.value === 'text' ? { text: '' } : event.target.value === 'led' ? { mode: 'fill', color: '#3ecf8e', count: 8, brightness: 0.25 } : { keys: [] } } : item))}><option value="shortcut">Tasten</option><option value="text">Text</option><option value="led">LED</option></select>
               {macro.kind === 'text'
                 ? <input aria-label="Macro-Text" value={macro.payload.text || ''} onChange={(event) => setPicoMacros((items) => items.map((item, itemIndex) => itemIndex === index ? { ...item, payload: { text: event.target.value } } : item))} />
-                : <input aria-label="Tastenkombination" placeholder="CTRL+C" value={(macro.payload.keys || []).join('+')} onChange={(event) => setPicoMacros((items) => items.map((item, itemIndex) => itemIndex === index ? { ...item, payload: { keys: event.target.value.split('+').map((key) => key.trim()).filter(Boolean) } } : item))} />}
+                : macro.kind === 'led'
+                  ? <input aria-label="LED-Farbe" placeholder="#3ecf8e" value={macro.payload.mode === 'off' ? 'off' : (macro.payload.color || '#3ecf8e')} onChange={(event) => setPicoMacros((items) => items.map((item, itemIndex) => itemIndex === index ? { ...item, payload: event.target.value.trim().toLowerCase() === 'off' ? { mode: 'off' } : { mode: 'fill', color: event.target.value || '#3ecf8e', count: Number(item.payload.count || 8), brightness: Number(item.payload.brightness ?? 0.25) } } : item))} />
+                  : <input aria-label="Tastenkombination" placeholder="CTRL+C" value={(macro.payload.keys || []).join('+')} onChange={(event) => setPicoMacros((items) => items.map((item, itemIndex) => itemIndex === index ? { ...item, payload: { keys: event.target.value.split('+').map((key) => key.trim()).filter(Boolean) } } : item))} />}
               <button aria-label="Macro entfernen" onClick={() => setPicoMacros((items) => items.filter((_, itemIndex) => itemIndex !== index))}>×</button>
             </div>
           ))}
@@ -769,7 +771,7 @@ function App() {
               <button className="macro-button" key={macro.id} onClick={() => void sendPicoMacro(macro.id)}>
                 <Keyboard size={22} />
                 <b>{macro.name}</b>
-                <small>{macro.kind === 'text' ? 'Text senden' : macro.payload.keys?.join(' + ')}</small>
+                <small>{macro.kind === 'text' ? 'Text senden' : macro.kind === 'led' ? (macro.payload.mode === 'off' ? 'LED aus' : `LED ${macro.payload.color || '#3ecf8e'}`) : macro.payload.keys?.join(' + ')}</small>
               </button>
             ))}
             {picoMacros.length === 0 && <div className="empty-state">Noch keine Macros konfiguriert.</div>}

@@ -617,6 +617,61 @@ class PicoConfig(BaseModel):
     baud: int = 115200
 
 
+def _parse_led_color(value: Any) -> list[int]:
+    if isinstance(value, str):
+        text = value.strip()
+        if text.startswith("#"):
+            text = text[1:]
+        if len(text) == 6:
+            try:
+                return [int(text[0:2], 16), int(text[2:4], 16), int(text[4:6], 16)]
+            except ValueError:
+                pass
+        return [255, 255, 255]
+    if isinstance(value, list) and len(value) >= 3:
+        rgb: list[int] = []
+        for item in value[:3]:
+            try:
+                rgb.append(max(0, min(255, int(item))))
+            except (TypeError, ValueError):
+                rgb.append(0)
+        return rgb
+    return [255, 255, 255]
+
+
+def _build_led_command(payload: dict[str, Any]) -> dict[str, Any]:
+    mode = str(payload.get("mode", "fill")).strip().lower()
+    if mode == "off":
+        return {"type": "led", "mode": "off"}
+
+    try:
+        brightness = max(0.0, min(1.0, float(payload.get("brightness", 0.25))))
+    except (TypeError, ValueError):
+        brightness = 0.25
+
+    if mode == "pixels":
+        pixels = payload.get("pixels", [])
+        normalized: list[list[int]] = []
+        if isinstance(pixels, list):
+            for pixel in pixels[:8]:
+                if isinstance(pixel, list):
+                    normalized.append(_parse_led_color(pixel))
+        return {"type": "led", "mode": "pixels", "pixels": normalized, "brightness": brightness}
+
+    try:
+        count = max(0, min(8, int(payload.get("count", 8))))
+    except (TypeError, ValueError):
+        count = 8
+
+    return {
+        "type": "led",
+        "mode": "fill",
+        "color": _parse_led_color(payload.get("color", "#3ecf8e")),
+        "count": count,
+        "brightness": brightness,
+    }
+
+
 @app.get("/api/pico/status")
 def pico_status() -> dict[str, Any]:
     with db() as connection:
@@ -671,7 +726,7 @@ def save_pico_macros(body: PicoMacroConfig) -> dict[str, Any]:
         for index, macro in enumerate(body.macros):
             macro_id = macro.id.strip() or f"macro-{index + 1}"
             name = macro.name.strip()[:40] or "Unbenanntes Makro"
-            kind = macro.kind if macro.kind in {"shortcut", "text"} else "shortcut"
+            kind = macro.kind if macro.kind in {"shortcut", "text", "led"} else "shortcut"
             ids_seen.add(macro_id)
             connection.execute("INSERT INTO pico_macros(id,name,kind,payload,sort_order) VALUES(?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,kind=excluded.kind,payload=excluded.payload,sort_order=excluded.sort_order", (macro_id, name, kind, json.dumps(macro.payload), index))
         for old_id in existing_ids - ids_seen:
@@ -694,6 +749,8 @@ def send_pico_macro(macro_id: str) -> dict[str, Any]:
         payload = json.loads(row["payload"])
         if row["kind"] == "text":
             command = {"type": "text", "text": str(payload.get("text", ""))[:500]}
+        elif row["kind"] == "led":
+            command = _build_led_command(payload)
         else:
             keys = [str(key).strip().upper() for key in payload.get("keys", []) if str(key).strip()][:8]
             command = {"type": "shortcut", "keys": keys}
