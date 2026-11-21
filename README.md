@@ -48,21 +48,24 @@ Die IP-Adresse des Pis ermittelt man mit `hostname -I`.
 
 ## Raspberry Pi Pico WH / BLE-HID
 
-Der Pico WH verbindet sich per **MicroPython** als Bluetooth-Tastatur mit dem PC. Der Raspberry Pi sendet Makros über UART:
+Der Pico W/WH meldet sich per **MicroPython** über Bluetooth LE als HID-Gerät (Tastatur + Medientasten) am PC an. Der Raspberry Pi 4 mit dem Desk-Buddy sendet die Makros über UART an den Pico, der Pico steuert zusätzlich den LED-Streifen:
 
 - Pico `GP0 / TX` → Raspberry-Pi `GPIO15 / RX`, Pin 10
 - Pico `GP1 / RX` → Raspberry-Pi `GPIO14 / TX`, Pin 8
-- Gemeinsame Masse an Pin 6, 9, 14, 20, 25, 30, 34, 39
-- UART: 115200 Baud
-- Optional LED-Strip (WS2812/SK6812): `DIN` an Pico `GP2`, gemeinsame Masse, 5V an `VSYS`
+- Gemeinsame Masse (z. B. Pi Pin 6 ↔ Pico GND)
+- UART: 115200 Baud, eine JSON-Zeile pro Befehl, Antwort `ok ...` oder `error <grund>`
+- LED-Strip (WS2812/SK6812): `DIN` an Pico `GP2`, gemeinsame Masse, 5 V an `VSYS`
+- Die Stromversorgung des Pico kommt vom Pi (z. B. Pi 5 V → Pico `VSYS`) oder über dessen USB-Anschluss.
 
-Firmware liegt unter `firmware/pico/code.py` und benötigt auf dem Pico WH keine externen Python-Pakete. Die Makros werden auf der Config-Seite unter `http://<PI-IP>:8000/config` bearbeitet. Die Makro-Seite auf dem Pi sendet die ausgewählten Aktionen über UART an den Pico.
-
-Setup kurz:
-1. Aktuelle MicroPython-`uf2` für Pico W/WH flashen.
+Setup:
+1. Aktuelle MicroPython-`uf2` für Pico W/WH flashen (mindestens 1.21 wegen Pairing/Bonding).
 2. `firmware/pico/code.py` als `main.py` auf den Pico kopieren.
-3. Am PC Bluetooth-Gerät `DeskBuddy` koppeln.
-4. Danach sendet der Pi Shortcuts/Text per UART (115200).
+3. Am PC in den Bluetooth-Einstellungen das Gerät `DeskBuddy` hinzufügen (es erscheint als Tastatur).
+4. Auf dem Pi die UART-Login-Konsole deaktivieren und die serielle Schnittstelle aktivieren (`raspi-config` → Interface Options → Serial Port: Login-Shell **nein**, Hardware **ja**).
+
+Die Kopplung wird auf dem Pico in `ble_keys.json` gespeichert, sodass der PC ihn nach einem Neustart automatisch wieder verbindet. Wenn der PC den Pico nicht mehr verbindet (z. B. nach dem Löschen des Geräts am PC): Gerät am PC entfernen, vom Pi aus `{"type": "unpair"}` an den Pico senden (oder `ble_keys.json` löschen) und neu koppeln.
+
+Unterstützte Makros: Shortcuts (z. B. `CTRL`+`C`, `F13`–`F24`), Medientasten (`VOLUME_UP`, `VOLUME_DOWN`, `MUTE`, `PLAY_PAUSE`, `NEXT`, `PREV`, ...), Text (US-Tastaturlayout, Umlaute werden übersprungen) und LED-Steuerung. Ein Befehl `{"type": "status"}` liefert `ok connected` bzw. `ok disconnected`.
 
 In den Pico-Macros gibt es zusätzlich den Typ **LED**. Eingaben:
 - `#RRGGBB` (z. B. `#3ecf8e`) setzt alle 8 LEDs auf diese Farbe.
@@ -70,7 +73,7 @@ In den Pico-Macros gibt es zusätzlich den Typ **LED**. Eingaben:
 
 Auf der **Macros**-Seite kann der LED-Strip außerdem direkt gesteuert werden (Farbe, Anzahl LEDs, Helligkeit, Aus).
 
-Vor dem Einsatz: Raspberry-Pi UART-Konsole deaktivieren und Serial-Zugriff erlauben. Keine Spannungen von 5 V auf die Pico-GPIOs legen.
+Vor dem Einsatz: Keine Spannungen von 5 V auf die Pico-GPIOs legen.
 
 ## iCloud-Kalender
 
