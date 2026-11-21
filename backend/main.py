@@ -92,6 +92,11 @@ async def get_tasks() -> dict[str, Any]:
             connection.execute("INSERT INTO notion_cache(kind,payload,synced_at) VALUES('tasks',?,?) ON CONFLICT(kind) DO UPDATE SET payload=excluded.payload,synced_at=excluded.synced_at", (json.dumps(items), synced_at))
         return {"items": items, "synced_at": synced_at}
     except httpx.HTTPError:
+        with db() as connection:
+            row = connection.execute("SELECT payload, synced_at FROM notion_cache WHERE kind='tasks'").fetchone()
+        if row:
+            import json
+            return {"items": json.loads(row["payload"]), "synced_at": row["synced_at"], "offline": True}
         raise HTTPException(status_code=502, detail="Notion ist derzeit nicht erreichbar")
 
 
