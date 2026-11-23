@@ -2,6 +2,9 @@ import { useEffect, useRef, useState } from 'react'
 import { CalendarDays, Check, Cloud, CloudRain, CloudSun, Coffee, Home, Keyboard, ListTodo, Moon, Power, RefreshCw, Snowflake, Sun, TimerReset, X } from 'lucide-react'
 import './App.css'
 
+// So lange bleibt das Display nach einem Tippen im Nachtmodus an (ohne weitere Berührung).
+const NIGHT_WAKE_GRACE_MS = 5 * 60 * 1000
+
 type Page = 'home' | 'tasks' | 'calendar' | 'timer' | 'macros' | 'config'
 type Mood = 'neutral' | 'happy' | 'focused' | 'proud' | 'sleepy' | 'thinking' | 'surprised'
 type MoodColor = 'default' | 'focus' | 'success' | 'warning'
@@ -86,6 +89,8 @@ function App() {
   const [ledCount, setLedCount] = useState(8)
   const [ledBrightness, setLedBrightness] = useState(25)
   const swipeStart = useRef<{ x: number; y: number } | null>(null)
+  // Bis zu diesem Zeitpunkt (ms) bleibt das Display nach einem Tippen im Nachtmodus an.
+  const nightWakeUntil = useRef(0)
 
   const loadTasks = () => {
     fetch('/api/tasks')
@@ -194,6 +199,27 @@ function App() {
     return () => window.clearInterval(clock)
   }, [])
 
+  const isNightWindow = (date: Date) => {
+    const toMinutes = (value: string) => {
+      const [hours, minutes] = value.split(':').map(Number)
+      return hours * 60 + minutes
+    }
+    const current = date.getHours() * 60 + date.getMinutes()
+    const start = toMinutes(nightStart)
+    const end = toMinutes(nightEnd)
+    return start <= end
+      ? current >= start && current < end
+      : current >= start || current < end
+  }
+
+  // Jede Berührung während der Nachtzeit verlängert die Schonfrist, damit das
+  // Display nicht direkt nach dem Aufwecken wieder ausgeht.
+  const extendNightWake = () => {
+    if (nightEnabled && isNightWindow(new Date())) {
+      nightWakeUntil.current = Date.now() + NIGHT_WAKE_GRACE_MS
+    }
+  }
+
   useEffect(() => {
     if (standaloneConfig || manualDisplaySleep) return
 
@@ -208,16 +234,12 @@ function App() {
       return
     }
 
-    const toMinutes = (value: string) => {
-      const [hours, minutes] = value.split(':').map(Number)
-      return hours * 60 + minutes
-    }
-    const current = now.getHours() * 60 + now.getMinutes()
-    const start = toMinutes(nightStart)
-    const end = toMinutes(nightEnd)
-    const shouldSleep = start <= end
-      ? current >= start && current < end
-      : current >= start || current < end
+    const inWindow = isNightWindow(now)
+    // Außerhalb der Nachtzeit verfällt die Schonfrist; innerhalb bleibt das Display
+    // nach einem Tippen an, bis die Schonfrist ohne weitere Berührung abgelaufen ist.
+    if (!inWindow) nightWakeUntil.current = 0
+    const snoozed = Date.now() < nightWakeUntil.current
+    const shouldSleep = inWindow && !snoozed
 
     if (shouldSleep && !displayAsleep) {
       setDisplayAsleep(true)
@@ -482,6 +504,7 @@ function App() {
   }
 
   const wakeDisplay = async () => {
+    extendNightWake()
     if (!displayAsleep) return
     setManualDisplaySleep(false)
     setDisplayAsleep(false)
@@ -687,6 +710,7 @@ function App() {
       className={`app-shell${darkMode ? ' dark' : ''}${standaloneConfig ? ' standalone-config' : ''}`}
       onPointerDown={(event) => {
         if (displayAsleep) void wakeDisplay()
+        else extendNightWake()
         swipeStart.current = { x: event.clientX, y: event.clientY }
       }}
       onPointerUp={(event) => {
